@@ -37,15 +37,18 @@ export default function App() {
   const [newEntryCC, setNewEntryCC] = useState(false);
   const [briefInput, setBriefInput] = useState("");
   const [replyDrafts, setReplyDrafts] = useState({});
+  const [errorMsg, setErrorMsg] = useState(null);
 
   const fetchEntries = useCallback(async () => {
     const { data, error } = await supabase.from("entries").select("*").order("created_at", { ascending: false });
-    if (!error) setEntries(data || []);
+    if (error) { setErrorMsg("Errore nel caricare il registro: " + error.message); return; }
+    setEntries(data || []);
   }, []);
 
   const fetchBriefings = useCallback(async () => {
     const { data, error } = await supabase.from("briefings").select("*").order("created_at", { ascending: false });
-    if (!error) setBriefings(data || []);
+    if (error) { setErrorMsg("Errore nel caricare i briefing: " + error.message); return; }
+    setBriefings(data || []);
   }, []);
 
   useEffect(() => {
@@ -73,25 +76,32 @@ export default function App() {
     if (!text || !selectedReparto) return;
     setNewEntryText("");
     setNewEntryCC(false);
-    await supabase.from("entries").insert({
+    const { error } = await supabase.from("entries").insert({
       reparto: selectedReparto,
       category: activeCategory,
       text,
       open_by: currentUser,
       cc: newEntryCC,
     });
+    if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
   };
 
   const toggleDone = async (item) => {
-    if (!item.done) {
-      await supabase.from("entries").update({ done: true, resolved_by: currentUser, resolved_at: new Date().toISOString() }).eq("id", item.id);
-    } else {
-      await supabase.from("entries").update({ done: false, resolved_by: null, resolved_at: null }).eq("id", item.id);
-    }
+    const { error } = !item.done
+      ? await supabase.from("entries").update({ done: true, resolved_by: currentUser, resolved_at: new Date().toISOString() }).eq("id", item.id)
+      : await supabase.from("entries").update({ done: false, resolved_by: null, resolved_at: null }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nell'aggiornare la voce: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
   };
 
   const toggleTag = async (item) => {
-    await supabase.from("entries").update({ cc: !item.cc }).eq("id", item.id);
+    const { error } = await supabase.from("entries").update({ cc: !item.cc }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nel taggare la voce: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
   };
 
   const sendReply = async (item) => {
@@ -99,14 +109,20 @@ export default function App() {
     if (!text) return;
     setReplyDrafts((p) => ({ ...p, [item.id]: "" }));
     const nextReplies = [...(item.replies || []), { author: currentUser, text, time: new Date().toISOString() }];
-    await supabase.from("entries").update({ replies: nextReplies }).eq("id", item.id);
+    const { error } = await supabase.from("entries").update({ replies: nextReplies }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nell'inviare la risposta: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
   };
 
   const addBriefing = async () => {
     const text = briefInput.trim();
     if (!text) return;
     setBriefInput("");
-    await supabase.from("briefings").insert({ operator: currentUser, text });
+    const { error } = await supabase.from("briefings").insert({ operator: currentUser, text });
+    if (error) { setErrorMsg("Errore nel salvare il riepilogo: " + error.message); return; }
+    setErrorMsg(null);
+    fetchBriefings();
   };
 
   // ---------- gate ----------
@@ -166,6 +182,12 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {errorMsg && (
+        <div style={{ background: "#fef2f2", color: "#991b1b", padding: "8px 16px", fontSize: 12, borderBottom: "1px solid #fecaca" }}>
+          ⚠️ {errorMsg}
+        </div>
+      )}
 
       {loading ? (
         <div className="hint" style={{ padding: 24, textAlign: "center" }}>Caricamento registro condiviso...</div>
