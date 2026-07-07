@@ -40,8 +40,16 @@ function dayLabel(iso) {
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [gateInput, setGateInput] = useState("");
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   const [entries, setEntries] = useState([]);
   const [briefings, setBriefings] = useState([]);
@@ -61,6 +69,58 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [sendingEmailId, setSendingEmailId] = useState(null);
 
+  const [editingEntryId, setEditingEntryId] = useState(null);
+  const [editEntryText, setEditEntryText] = useState("");
+  const [editingBriefId, setEditingBriefId] = useState(null);
+  const [editBriefText, setEditBriefText] = useState("");
+
+  const currentUser = profile?.display_name || profile?.email || null;
+  const isMaster = !!profile?.is_master;
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => setSession(sess));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = useCallback(async () => {
+    if (!session) { setProfile(null); return; }
+    const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+    setProfile(data || null);
+  }, [session]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const handleLogin = async () => {
+    setAuthBusy(true); setAuthError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    if (error) setAuthError(error.message);
+    setAuthBusy(false);
+  };
+
+  const handleSignup = async () => {
+    setAuthBusy(true); setAuthError(null);
+    const email = authEmail.trim().toLowerCase();
+    if (!email.endsWith("@mylav.net")) { setAuthError("Usa un indirizzo email @mylav.net"); setAuthBusy(false); return; }
+    if (authPassword.length < 6) { setAuthError("La password deve avere almeno 6 caratteri"); setAuthBusy(false); return; }
+    const { error } = await supabase.auth.signUp({ email, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthBusy(false); return; }
+    setSignupDone(true);
+    setAuthBusy(false);
+  };
+
+  const handleLogout = async () => { await supabase.auth.signOut(); };
+
+  const saveDisplayName = async () => {
+    const v = nameInput.trim();
+    if (!v) return;
+    await supabase.from("profiles").update({ display_name: v }).eq("id", session.user.id);
+    fetchProfile();
+  };
+
   const fetchEntries = useCallback(async () => {
     const { data, error } = await supabase.from("entries").select("*").order("created_at", { ascending: false });
     if (error) { setErrorMsg("Errore nel caricare il registro: " + error.message); return; }
@@ -74,6 +134,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!session) return;
     (async () => {
       await Promise.all([fetchEntries(), fetchBriefings()]);
       setLoading(false);
@@ -86,12 +147,7 @@ export default function App() {
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
 
     return () => supabase.removeChannel(channel);
-  }, [fetchEntries, fetchBriefings]);
-
-  const enter = () => {
-    const v = gateInput.trim();
-    if (v) setCurrentUser(v);
-  };
+  }, [session, fetchEntries, fetchBriefings]);
 
   const addEntry = async () => {
     const text = newEntryText.trim();
@@ -175,41 +231,122 @@ export default function App() {
     fetchBriefings();
   };
 
-  // ---------- gate ----------
-  if (!currentUser) {
+  const startEditEntry = (item) => { setEditingEntryId(item.id); setEditEntryText(item.text); };
+  const cancelEditEntry = () => { setEditingEntryId(null); setEditEntryText(""); };
+  const saveEditEntry = async (item) => {
+    const text = editEntryText.trim();
+    if (!text) return;
+    const { error } = await supabase.from("entries").update({ text }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nel modificare la voce: " + error.message); return; }
+    setErrorMsg(null);
+    setEditingEntryId(null);
+    fetchEntries();
+  };
+  const toggleHideEntry = async (item) => {
+    const { error } = await supabase.from("entries").update({ hidden: !item.hidden }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nel nascondere la voce: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
+  };
+
+  const startEditBrief = (b) => { setEditingBriefId(b.id); setEditBriefText(b.text); };
+  const cancelEditBrief = () => { setEditingBriefId(null); setEditBriefText(""); };
+  const saveEditBrief = async (b) => {
+    const text = editBriefText.trim();
+    if (!text) return;
+    const { error } = await supabase.from("briefings").update({ text }).eq("id", b.id);
+    if (error) { setErrorMsg("Errore nel modificare il riepilogo: " + error.message); return; }
+    setErrorMsg(null);
+    setEditingBriefId(null);
+    fetchBriefings();
+  };
+  const toggleHideBrief = async (b) => {
+    const { error } = await supabase.from("briefings").update({ hidden: !b.hidden }).eq("id", b.id);
+    if (error) { setErrorMsg("Errore nel nascondere il riepilogo: " + error.message); return; }
+    setErrorMsg(null);
+    fetchBriefings();
+  };
+
+  if (authLoading) {
+    return <div className="gate"><div className="gate-sub" style={{ color: "#94a3b8" }}>Caricamento...</div></div>;
+  }
+
+  if (!session) {
     return (
       <div className="gate">
         <div className="gate-box">
-          <div className="gate-title">Chi sei?</div>
-          <div className="gate-sub">Il nome resta associato a tutto quello che scrivi o risolvi, come una firma.</div>
-          <input
-            autoFocus
-            className="gate-input"
-            value={gateInput}
-            onChange={(e) => setGateInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && enter()}
-            placeholder="Nome e cognome"
-          />
-          <button className="gate-btn" onClick={enter}>Entra →</button>
+          <div className="gate-title">{authMode === "login" ? "Accedi" : "Crea account"}</div>
+          <div className="gate-sub">
+            {authMode === "login" ? "Registro Consegne e Comunicazioni Interne." : "Solo indirizzi email @mylav.net possono registrarsi."}
+          </div>
+
+          {signupDone ? (
+            <div className="auth-info">
+              Account creato. Controlla la tua casella email per confermare, poi torna qui ad accedere.
+              <button className="auth-toggle" onClick={() => { setSignupDone(false); setAuthMode("login"); }}>Torna al login</button>
+            </div>
+          ) : (
+            <>
+              <input className="gate-input" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+              <input className="gate-input" type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (authMode === "login" ? handleLogin() : handleSignup())} />
+              {authError && <div className="auth-error">{authError}</div>}
+              <button className="gate-btn" disabled={authBusy} onClick={authMode === "login" ? handleLogin : handleSignup}>
+                {authBusy ? "..." : authMode === "login" ? "Entra →" : "Crea account →"}
+              </button>
+              <button className="auth-toggle" onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError(null); }}>
+                {authMode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
-  const openCount = entries.filter((e) => !e.done).length;
-  const ccCount = entries.filter((e) => e.cc && !e.done).length;
-  const ccEntries = entries.filter((e) => e.cc);
-  const archivedEntries = entries.filter((e) => isArchived(e) && isCurrentMonth(e.resolved_at)).sort((a, b) => new Date(b.resolved_at) - new Date(a.resolved_at));
+  if (!profile) {
+    return <div className="gate"><div className="gate-sub" style={{ color: "#94a3b8" }}>Caricamento profilo...</div></div>;
+  }
+
+  if (!profile.display_name) {
+    return (
+      <div className="gate">
+        <div className="gate-box">
+          <div className="gate-title">Come ti chiami?</div>
+          <div className="gate-sub">Il tuo nome sarà usato per firmare tutto quello che scrivi.</div>
+          <input autoFocus className="gate-input" placeholder="Nome e cognome" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveDisplayName()} />
+          <button className="gate-btn" onClick={saveDisplayName}>Continua →</button>
+        </div>
+      </div>
+    );
+  }
+
+  const visibleEntries = entries.filter((e) => !e.hidden);
+  const hiddenEntries = entries.filter((e) => e.hidden);
+  const visibleBriefingsAll = briefings.filter((b) => !b.hidden);
+  const hiddenBriefings = briefings.filter((b) => b.hidden);
+
+  const openCount = visibleEntries.filter((e) => !e.done).length;
+  const ccCount = visibleEntries.filter((e) => e.cc && !e.done).length;
+  const ccEntries = visibleEntries.filter((e) => e.cc);
+  const archivedEntries = visibleEntries.filter((e) => isArchived(e) && isCurrentMonth(e.resolved_at)).sort((a, b) => new Date(b.resolved_at) - new Date(a.resolved_at));
 
   const q = searchQuery.trim().toLowerCase();
   const searchResults = q
-    ? entries.filter((e) => [e.text, e.open_by, e.resolved_by || "", reparto(e.reparto).label, catInfo(e.category).label].join(" ").toLowerCase().includes(q))
+    ? visibleEntries.filter((e) => [e.text, e.open_by, e.resolved_by || "", reparto(e.reparto).label, catInfo(e.category).label].join(" ").toLowerCase().includes(q))
     : [];
 
-  const scoped = selectedReparto ? entries.filter((e) => e.reparto === selectedReparto && !isArchived(e)) : [];
+  const scoped = selectedReparto ? visibleEntries.filter((e) => e.reparto === selectedReparto && !isArchived(e)) : [];
 
-  const allBriefTags = [...new Set(briefings.flatMap((b) => b.tags || []))];
-  const visibleBriefings = briefTagFilter ? briefings.filter((b) => (b.tags || []).includes(briefTagFilter)) : briefings;
+  const allBriefTags = [...new Set(visibleBriefingsAll.flatMap((b) => b.tags || []))];
+  const visibleBriefings = briefTagFilter ? visibleBriefingsAll.filter((b) => (b.tags || []).includes(briefTagFilter)) : visibleBriefingsAll;
+
+  const entryHandlers = {
+    onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
+    onSendEmail: sendCommunication, sendingEmailId, isMaster,
+    editingId: editingEntryId, editText: editEntryText, setEditText: setEditEntryText,
+    onStartEdit: startEditEntry, onSaveEdit: saveEditEntry, onCancelEdit: cancelEditEntry, onHide: toggleHideEntry,
+  };
 
   return (
     <div className="wrap">
@@ -217,8 +354,8 @@ export default function App() {
         <div>
           <span className="brand">📋 Registro Consegne e Comunicazioni Interne</span>
           <span className="whoami">
-            sei <b>{currentUser}</b>
-            <a onClick={() => { setCurrentUser(null); setGateInput(""); }}>cambia</a>
+            sei <b>{currentUser}</b>{isMaster && <span className="master-tag">master</span>}
+            <a onClick={handleLogout}>esci</a>
           </span>
         </div>
         <div className="bar-right">
@@ -236,6 +373,11 @@ export default function App() {
             <button className={"seg-btn " + (activePanel === "archivio" ? "active" : "")} onClick={() => setActivePanel("archivio")}>
               Archivio <span className="badge">{archivedEntries.length}</span>
             </button>
+            {isMaster && (
+              <button className={"seg-btn " + (activePanel === "nascosti" ? "active" : "")} onClick={() => setActivePanel("nascosti")}>
+                Nascosti <span className="badge">{hiddenEntries.length + hiddenBriefings.length}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -263,16 +405,14 @@ export default function App() {
                   {searchResults.length === 0 ? (
                     <div className="empty">Nessun risultato.</div>
                   ) : (
-                    searchResults.map((item) => (
-                      <ItemRow key={item.id} item={item} showTags onToggle={toggleDone} onTag={toggleTag} replyDrafts={replyDrafts} setReplyDrafts={setReplyDrafts} onReply={sendReply} onSendEmail={sendCommunication} sendingEmailId={sendingEmailId} />
-                    ))
+                    searchResults.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
                   )}
                 </>
               ) : (
                 <>
                   <div className="pillrow">
                     {REPARTI.map((r) => {
-                      const n = entries.filter((e) => e.reparto === r.id && !e.done).length;
+                      const n = visibleEntries.filter((e) => e.reparto === r.id && !e.done).length;
                       const active = selectedReparto === r.id;
                       return (
                         <button key={r.id} className={"pill " + (active ? "active" : "")} onClick={() => setSelectedReparto(active ? null : r.id)}>
@@ -314,9 +454,7 @@ export default function App() {
                           return (
                             <div className="grp" key={cat.id}>
                               <div className="grp-h">{cat.icon} {cat.label} <span className="cnt">{openN} aperte</span></div>
-                              {items.map((item) => (
-                                <ItemRow key={item.id} item={item} onToggle={toggleDone} onTag={toggleTag} replyDrafts={replyDrafts} setReplyDrafts={setReplyDrafts} onReply={sendReply} onSendEmail={sendCommunication} sendingEmailId={sendingEmailId} />
-                              ))}
+                              {items.map((item) => <ItemRow key={item.id} item={item} {...entryHandlers} />)}
                             </div>
                           );
                         })
@@ -342,9 +480,7 @@ export default function App() {
                 <div className="pillrow">
                   <button className={"pill " + (!briefTagFilter ? "active" : "")} onClick={() => setBriefTagFilter(null)}>Tutti</button>
                   {allBriefTags.map((t) => (
-                    <button key={t} className={"pill " + (briefTagFilter === t ? "active" : "")} onClick={() => setBriefTagFilter(briefTagFilter === t ? null : t)}>
-                      #{t}
-                    </button>
+                    <button key={t} className={"pill " + (briefTagFilter === t ? "active" : "")} onClick={() => setBriefTagFilter(briefTagFilter === t ? null : t)}>#{t}</button>
                   ))}
                 </div>
               )}
@@ -358,17 +494,34 @@ export default function App() {
                     const label = dayLabel(b.created_at);
                     const showHeader = label !== lastLabel;
                     lastLabel = label;
+                    const isEditing = editingBriefId === b.id;
                     return (
                       <React.Fragment key={b.id}>
                         {showHeader && <div className="day-header">{label}</div>}
                         <div className="brief-item">
-                          <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
-                          <div className="brief-text">{b.text}</div>
+                          <div className="brief-top">
+                            <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
+                            {isMaster && !isEditing && (
+                              <div className="master-actions">
+                                <button className="master-btn" onClick={() => startEditBrief(b)} title="Modifica">✏️</button>
+                                <button className="master-btn" onClick={() => toggleHideBrief(b)} title="Nascondi">🙈</button>
+                              </div>
+                            )}
+                          </div>
+                          {isEditing ? (
+                            <>
+                              <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} />
+                              <div className="edit-actions">
+                                <button className="btn" onClick={() => saveEditBrief(b)}>Salva</button>
+                                <button className="cancel-btn" onClick={cancelEditBrief}>Annulla</button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="brief-text">{b.text}</div>
+                          )}
                           {(b.tags || []).length > 0 && (
                             <div className="brief-tags">
-                              {b.tags.map((t) => (
-                                <span key={t} className="brief-tag" onClick={() => setBriefTagFilter(t)}>#{t}</span>
-                              ))}
+                              {b.tags.map((t) => <span key={t} className="brief-tag" onClick={() => setBriefTagFilter(t)}>#{t}</span>)}
                             </div>
                           )}
                         </div>
@@ -386,9 +539,7 @@ export default function App() {
               {archivedEntries.length === 0 ? (
                 <div className="empty">Nessuna voce archiviata questo mese.</div>
               ) : (
-                archivedEntries.map((item) => (
-                  <ItemRow key={item.id} item={item} onToggle={toggleDone} onTag={toggleTag} replyDrafts={replyDrafts} setReplyDrafts={setReplyDrafts} onReply={sendReply} showTags onSendEmail={sendCommunication} sendingEmailId={sendingEmailId} />
-                ))
+                archivedEntries.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
               )}
             </div>
           )}
@@ -415,6 +566,34 @@ export default function App() {
               )}
             </div>
           )}
+
+          {activePanel === "nascosti" && isMaster && (
+            <div className="panel active">
+              <div className="panel-intro">Visibile solo a chi ha permessi da master. Le voci nascoste non sono cancellate: puoi sempre farle ricomparire.</div>
+              <div className="grp-h" style={{ marginBottom: 8 }}>Voci nascoste</div>
+              {hiddenEntries.length === 0 ? (
+                <div className="empty">Nessuna voce nascosta.</div>
+              ) : (
+                hiddenEntries.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
+              )}
+              <div className="grp-h" style={{ margin: "18px 0 8px" }}>Riepiloghi briefing nascosti</div>
+              {hiddenBriefings.length === 0 ? (
+                <div className="empty">Nessun riepilogo nascosto.</div>
+              ) : (
+                hiddenBriefings.map((b) => (
+                  <div className="brief-item" key={b.id}>
+                    <div className="brief-top">
+                      <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
+                      <div className="master-actions">
+                        <button className="master-btn" onClick={() => toggleHideBrief(b)} title="Mostra">👁️</button>
+                      </div>
+                    </div>
+                    <div className="brief-text">{b.text}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -434,9 +613,7 @@ function EmailBox({ item, onSend, sendingId }) {
   const isSending = sendingId === item.id;
   return (
     <div className="email-box">
-      {item.email_sent && (
-        <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtTime(item.email_sent_at)}</div>
-      )}
+      {item.email_sent && <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtTime(item.email_sent_at)}</div>}
       <button className="email-btn" onClick={() => onSend(item)} disabled={isSending}>
         {isSending ? "Invio in corso..." : item.email_sent ? "Invia di nuovo" : "📧 Invia comunicazione"}
       </button>
@@ -461,15 +638,30 @@ function Thread({ item, draft, setDraft, onSend }) {
   );
 }
 
-function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId }) {
+function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster, editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide }) {
+  const isEditing = editingId === item.id;
   return (
-    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "")}>
+    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "")}>
       <div className="chk" onClick={() => onToggle(item)} />
       <div className="item-b">
         <div className="item-top">
-          <div className="txt">{item.text}</div>
-          <button className={"tag-btn " + (item.cc ? "on" : "")} onClick={() => onTag(item)} title="Notifica Customer Care">🏷️</button>
+          {isEditing ? (
+            <textarea className="edit-textarea" value={editText} onChange={(e) => setEditText(e.target.value)} />
+          ) : (
+            <div className="txt">{item.text}</div>
+          )}
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <button className={"tag-btn " + (item.cc ? "on" : "")} onClick={() => onTag(item)} title="Notifica Customer Care">🏷️</button>
+            {isMaster && !isEditing && <button className="master-btn" onClick={() => onStartEdit(item)} title="Modifica">✏️</button>}
+            {isMaster && <button className="master-btn" onClick={() => onHide(item)} title={item.hidden ? "Mostra" : "Nascondi"}>{item.hidden ? "👁️" : "🙈"}</button>}
+          </div>
         </div>
+        {isEditing && (
+          <div className="edit-actions">
+            <button className="btn" onClick={() => onSaveEdit(item)}>Salva</button>
+            <button className="cancel-btn" onClick={onCancelEdit}>Annulla</button>
+          </div>
+        )}
         {showTags && <div className="grp-h" style={{ marginTop: 5 }}>{reparto(item.reparto).icon} {reparto(item.reparto).label} · {catInfo(item.category).icon} {catInfo(item.category).label}</div>}
         <Trace item={item} />
         {item.cc && (
