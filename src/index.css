@@ -24,6 +24,8 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .edit-actions { display:flex; gap:6px; margin-top:6px; }
 .cancel-btn { padding:6px 12px; border-radius:6px; background:#fff; color:#64748b; border:1px solid #cbd5e1; font-size:11.5px; font-weight:600; cursor:pointer; }
 .hidden-item { opacity:.7; border-style:dashed; }
+.item.stale { background:#fef2f2; border-color:#fecaca; }
+.stale-badge { display:inline-block; font-size:10px; font-weight:700; color:#dc2626; background:#fee2e2; padding:2px 9px; border-radius:999px; margin-top:5px; }
 .brief-top { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; }
 
 /* top bar */
@@ -102,27 +104,29 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 
 /* briefing */
 .brief-form { display:flex; gap:6px; margin-bottom:14px; }
-.brief-input { flex:1; padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:13px; font-family:inherit; resize:vertical; min-height:38px; }
-.brief-btn { padding:8px 14px; border-radius:6px; background:#b45309; color:#fff; border:none; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; height:fit-content; }
-.brief-btn:hover { background:#92400e; }
-.brief-item { border-left:3px solid #f59e0b; background:#fffbeb; padding:8px 10px; margin-bottom:6px; border-radius:0 5px 5px 0; }
-.brief-meta { font-size:10.5px; color:#b45309; font-weight:700; margin-bottom:3px; }
+.brief-card { border:1px solid #e2e8f0; border-left:3px solid #6366f1; background:#fff; padding:10px 12px; margin-bottom:6px; border-radius:6px; cursor:pointer; }
+.brief-card:hover { border-color:#c7d2fe; background:#fafaff; }
+.brief-meta { font-size:11px; color:#64748b; font-weight:600; }
 .brief-text { font-size:12.5px; color:#334155; line-height:1.5; }
-.brief-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; }
-.brief-tag { font-size:10px; padding:2px 8px; border-radius:999px; background:#fef3c7; color:#92400e; font-weight:600; cursor:pointer; }
+.brief-count { font-weight:500; color:#94a3b8; margin-left:8px; font-size:10.5px; }
+.brief-views { font-weight:500; color:#0d9488; margin-left:8px; font-size:10.5px; }
+.brief-preview { font-size:12.5px; color:#94a3b8; font-style:italic; margin-top:4px; }
+.brief-points { margin:8px 0 0; padding-left:18px; }
+.brief-points li { font-size:12.5px; color:#334155; line-height:1.7; white-space:pre-wrap; }
+.brief-points li strong { font-weight:700; color:#1e293b; }
+.brief-points li em { font-style:italic; }
+.point-textarea { width:100%; padding:9px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:13px; font-family:inherit; resize:vertical; min-height:72px; line-height:1.5; }
+.point-textarea:focus { outline:none; border-color:#4f46e5; box-shadow:0 0 0 2px #e0e7ff; }
+.point-writer-actions { display:flex; justify-content:flex-end; }
+.brief-readby { font-size:10.5px; color:#0d9488; margin-top:10px; padding-top:7px; border-top:1px solid #f1f5f9; }
+.brief-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; }
+.brief-tag { font-size:10px; padding:2px 9px; border-radius:999px; background:#eef2ff; color:#4338ca; font-weight:600; cursor:pointer; }
+.brief-btn { padding:8px 14px; border-radius:6px; background:#4f46e5; color:#fff; border:none; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; height:fit-content; }
+.brief-btn:hover { background:#4338ca; }
 .day-header { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 8px; }
 .day-header:first-child { margin-top:0; }
-
-.brief-card { border-left:3px solid #f59e0b; background:#fffbeb; padding:9px 10px; margin-bottom:6px; border-radius:0 5px 5px 0; cursor:pointer; }
-.brief-card:hover { background:#fef3c7; }
-.brief-count { font-weight:400; color:#b45309; opacity:.75; margin-left:8px; font-size:10px; }
-.brief-views { font-weight:400; color:#0d9488; margin-left:8px; font-size:10px; }
-.brief-preview { font-size:12.5px; color:#78716c; font-style:italic; margin-top:3px; }
-.brief-points { margin:6px 0 0; padding-left:18px; }
-.brief-points li { font-size:12.5px; color:#334155; line-height:1.6; }
-.brief-readby { font-size:10.5px; color:#0d9488; margin-top:8px; padding-top:6px; border-top:1px dashed #fde68a; }
 .draft-points { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
-.draft-points li { font-size:12px; background:#fff; border:1px solid #e2e8f0; border-radius:5px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center; }
+.draft-points li { font-size:12px; background:#fff; border:1px solid #e2e8f0; border-radius:5px; padding:6px 8px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
 .remove-point { border:none; background:none; color:#94a3b8; cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
 .remove-point:hover { color:#ef4444; }
 
