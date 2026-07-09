@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     });
 
     await transporter.sendMail({
-      from: `"Patologia Clinica" <${user}>`,
+      from: `"Comunicazione Interna - Patologia Clinica" <${user}>`,
       to,
       subject: `Comunicazione Customer Care - ${reparto || "Laboratorio"}`,
       text: `Settore: ${reparto || "-"}\nCategoria: ${category || "-"}\n\n${text}\n\n— ${operator}, Laboratorio di Patologia Clinica`,
