@@ -113,6 +113,19 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .day-header { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 8px; }
 .day-header:first-child { margin-top:0; }
 
+.brief-card { border-left:3px solid #f59e0b; background:#fffbeb; padding:9px 10px; margin-bottom:6px; border-radius:0 5px 5px 0; cursor:pointer; }
+.brief-card:hover { background:#fef3c7; }
+.brief-count { font-weight:400; color:#b45309; opacity:.75; margin-left:8px; font-size:10px; }
+.brief-views { font-weight:400; color:#0d9488; margin-left:8px; font-size:10px; }
+.brief-preview { font-size:12.5px; color:#78716c; font-style:italic; margin-top:3px; }
+.brief-points { margin:6px 0 0; padding-left:18px; }
+.brief-points li { font-size:12.5px; color:#334155; line-height:1.6; }
+.brief-readby { font-size:10.5px; color:#0d9488; margin-top:8px; padding-top:6px; border-top:1px dashed #fde68a; }
+.draft-points { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+.draft-points li { font-size:12px; background:#fff; border:1px solid #e2e8f0; border-radius:5px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center; }
+.remove-point { border:none; background:none; color:#94a3b8; cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
+.remove-point:hover { color:#ef4444; }
+
 /* customer care */
 .cc-card { border:1px solid #fbcfe8; border-radius:6px; padding:10px; margin-bottom:10px; background:#fff; }
 .cc-tags { display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap; }
