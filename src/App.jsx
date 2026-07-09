@@ -63,8 +63,10 @@ export default function App() {
   const [newEntryText, setNewEntryText] = useState("");
   const [newEntryCC, setNewEntryCC] = useState(false);
   const [briefInput, setBriefInput] = useState("");
+  const [draftPoints, setDraftPoints] = useState([]);
   const [briefTagsInput, setBriefTagsInput] = useState("");
   const [briefTagFilter, setBriefTagFilter] = useState(null);
+  const [expandedBriefId, setExpandedBriefId] = useState(null);
   const [replyDrafts, setReplyDrafts] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
   const [sendingEmailId, setSendingEmailId] = useState(null);
@@ -219,16 +221,39 @@ export default function App() {
     }
   };
 
+  const addPointToDraft = () => {
+    const v = briefInput.trim();
+    if (!v) return;
+    setDraftPoints((p) => [...p, v]);
+    setBriefInput("");
+  };
+  const removeDraftPoint = (idx) => setDraftPoints((p) => p.filter((_, i) => i !== idx));
+
   const addBriefing = async () => {
-    const text = briefInput.trim();
-    if (!text) return;
+    const points = briefInput.trim() ? [...draftPoints, briefInput.trim()] : draftPoints;
+    if (points.length === 0) return;
     const tags = briefTagsInput.split(",").map((t) => t.trim()).filter(Boolean);
+    setDraftPoints([]);
     setBriefInput("");
     setBriefTagsInput("");
-    const { error } = await supabase.from("briefings").insert({ operator: currentUser, text, tags });
+    const { error } = await supabase.from("briefings").insert({ operator: currentUser, points, tags, views: [] });
     if (error) { setErrorMsg("Errore nel salvare il riepilogo: " + error.message); return; }
     setErrorMsg(null);
     fetchBriefings();
+  };
+
+  const markBriefingViewed = async (b) => {
+    const already = (b.views || []).some((v) => v.name === currentUser);
+    if (already) return;
+    const nextViews = [...(b.views || []), { name: currentUser, time: new Date().toISOString() }];
+    const { error } = await supabase.from("briefings").update({ views: nextViews }).eq("id", b.id);
+    if (!error) fetchBriefings();
+  };
+
+  const toggleExpandBrief = (b) => {
+    if (expandedBriefId === b.id) { setExpandedBriefId(null); return; }
+    setExpandedBriefId(b.id);
+    markBriefingViewed(b);
   };
 
   const startEditEntry = (item) => { setEditingEntryId(item.id); setEditEntryText(item.text); };
@@ -249,12 +274,16 @@ export default function App() {
     fetchEntries();
   };
 
-  const startEditBrief = (b) => { setEditingBriefId(b.id); setEditBriefText(b.text); };
+  const startEditBrief = (b) => {
+    setEditingBriefId(b.id);
+    const pts = (b.points && b.points.length) ? b.points : (b.text ? [b.text] : []);
+    setEditBriefText(pts.join("\n"));
+  };
   const cancelEditBrief = () => { setEditingBriefId(null); setEditBriefText(""); };
   const saveEditBrief = async (b) => {
-    const text = editBriefText.trim();
-    if (!text) return;
-    const { error } = await supabase.from("briefings").update({ text }).eq("id", b.id);
+    const points = editBriefText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!points.length) return;
+    const { error } = await supabase.from("briefings").update({ points, text: null }).eq("id", b.id);
     if (error) { setErrorMsg("Errore nel modificare il riepilogo: " + error.message); return; }
     setErrorMsg(null);
     setEditingBriefId(null);
@@ -470,10 +499,22 @@ export default function App() {
             <div className="panel active">
               <div className="brief-form">
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <textarea className="brief-input" value={briefInput} onChange={(e) => setBriefInput(e.target.value)} placeholder="Riepilogo del briefing: situazione, criticità, priorità..." />
+                  <div className="row">
+                    <input className="txt-input" value={briefInput} onChange={(e) => setBriefInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPointToDraft(); } }}
+                      placeholder="Scrivi un punto e premi invio per aggiungerlo alla lista..." />
+                    <button className="btn" onClick={addPointToDraft}>+ Punto</button>
+                  </div>
+                  {draftPoints.length > 0 && (
+                    <ul className="draft-points">
+                      {draftPoints.map((p, i) => (
+                        <li key={i}>{p} <button className="remove-point" onClick={() => removeDraftPoint(i)}>×</button></li>
+                      ))}
+                    </ul>
+                  )}
                   <input className="txt-input" value={briefTagsInput} onChange={(e) => setBriefTagsInput(e.target.value)} placeholder="Tag separati da virgola, es. straordinari, turni" />
                 </div>
-                <button className="brief-btn" onClick={addBriefing}>Salva</button>
+                <button className="brief-btn" onClick={addBriefing}>Salva riepilogo</button>
               </div>
 
               {allBriefTags.length > 0 && (
@@ -495,32 +536,50 @@ export default function App() {
                     const showHeader = label !== lastLabel;
                     lastLabel = label;
                     const isEditing = editingBriefId === b.id;
+                    const isExpanded = expandedBriefId === b.id;
+                    const pts = (b.points && b.points.length) ? b.points : (b.text ? [b.text] : []);
+                    const views = b.views || [];
                     return (
                       <React.Fragment key={b.id}>
                         {showHeader && <div className="day-header">{label}</div>}
-                        <div className="brief-item">
+                        <div className="brief-card" onClick={() => !isEditing && toggleExpandBrief(b)}>
                           <div className="brief-top">
-                            <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
+                            <div className="brief-meta">
+                              {b.operator} · {fmtTime(b.created_at)}
+                              <span className="brief-count">{pts.length} punt{pts.length === 1 ? "o" : "i"}</span>
+                              {views.length > 0 && <span className="brief-views">👁 {views.length}</span>}
+                            </div>
                             {isMaster && !isEditing && (
-                              <div className="master-actions">
+                              <div className="master-actions" onClick={(e) => e.stopPropagation()}>
                                 <button className="master-btn" onClick={() => startEditBrief(b)} title="Modifica">✏️</button>
                                 <button className="master-btn" onClick={() => toggleHideBrief(b)} title="Nascondi">🙈</button>
                               </div>
                             )}
                           </div>
+
                           {isEditing ? (
-                            <>
-                              <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} />
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga" />
                               <div className="edit-actions">
                                 <button className="btn" onClick={() => saveEditBrief(b)}>Salva</button>
                                 <button className="cancel-btn" onClick={cancelEditBrief}>Annulla</button>
                               </div>
+                            </div>
+                          ) : isExpanded ? (
+                            <>
+                              <ul className="brief-points">
+                                {pts.map((p, i) => <li key={i}>{p}</li>)}
+                              </ul>
+                              {views.length > 0 && (
+                                <div className="brief-readby">Letto da: {views.map((v) => v.name).join(", ")}</div>
+                              )}
                             </>
                           ) : (
-                            <div className="brief-text">{b.text}</div>
+                            <div className="brief-preview">{pts[0]}{pts.length > 1 ? "…" : ""}</div>
                           )}
+
                           {(b.tags || []).length > 0 && (
-                            <div className="brief-tags">
+                            <div className="brief-tags" onClick={(e) => e.stopPropagation()}>
                               {b.tags.map((t) => <span key={t} className="brief-tag" onClick={() => setBriefTagFilter(t)}>#{t}</span>)}
                             </div>
                           )}
@@ -580,17 +639,22 @@ export default function App() {
               {hiddenBriefings.length === 0 ? (
                 <div className="empty">Nessun riepilogo nascosto.</div>
               ) : (
-                hiddenBriefings.map((b) => (
-                  <div className="brief-item" key={b.id}>
-                    <div className="brief-top">
-                      <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
-                      <div className="master-actions">
-                        <button className="master-btn" onClick={() => toggleHideBrief(b)} title="Mostra">👁️</button>
+                hiddenBriefings.map((b) => {
+                  const pts = (b.points && b.points.length) ? b.points : (b.text ? [b.text] : []);
+                  return (
+                    <div className="brief-card" key={b.id}>
+                      <div className="brief-top">
+                        <div className="brief-meta">{b.operator} · {fmtTime(b.created_at)}</div>
+                        <div className="master-actions">
+                          <button className="master-btn" onClick={() => toggleHideBrief(b)} title="Mostra">👁️</button>
+                        </div>
                       </div>
+                      <ul className="brief-points">
+                        {pts.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
                     </div>
-                    <div className="brief-text">{b.text}</div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
