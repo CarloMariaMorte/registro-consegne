@@ -14,6 +14,7 @@ const CATEGORIES = [
   { id: "anomalie", label: "Anomalie strumentali", icon: "⚠️" },
   { id: "urgenze", label: "Urgenze", icon: "⚡" },
   { id: "note", label: "Note", icon: "📝" },
+  { id: "programmati", label: "Programmati", icon: "📅" },
 ];
 
 const reparto = (id) => REPARTI.find((r) => r.id === id) || { label: id, icon: "" };
@@ -28,6 +29,13 @@ const isCurrentMonth = (iso) => {
 };
 const isArchived = (item) => item.done && item.resolved_at && !isSameDay(item.resolved_at);
 const isStale = (item) => !item.done && item.open_at && !isSameDay(item.open_at);
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const isDueToday = (item) => item.category === "programmati" && item.scheduled_date === todayStr() && !item.done;
+const fmtDate = (dateStr) => {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y}`;
+};
 
 function dayLabel(iso) {
   const d = new Date(iso);
@@ -72,6 +80,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState("sospesi");
   const [newEntryText, setNewEntryText] = useState("");
   const [newEntryCC, setNewEntryCC] = useState(false);
+  const [newEntryDate, setNewEntryDate] = useState("");
   const [briefInput, setBriefInput] = useState("");
   const [draftPoints, setDraftPoints] = useState([]);
   const [briefTagsInput, setBriefTagsInput] = useState("");
@@ -185,6 +194,7 @@ export default function App() {
   const addEntry = async () => {
     const text = newEntryText.trim();
     if (!text || !selectedReparto) return;
+    if (activeCategory === "programmati" && !newEntryDate) { setErrorMsg("Seleziona una data per la voce programmata"); return; }
     setNewEntryText("");
     setNewEntryCC(false);
     const { error } = await supabase.from("entries").insert({
@@ -193,7 +203,9 @@ export default function App() {
       text,
       open_by: currentUser,
       cc: newEntryCC,
+      scheduled_date: activeCategory === "programmati" ? newEntryDate : null,
     });
+    setNewEntryDate("");
     if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
     setErrorMsg(null);
     fetchEntries();
@@ -526,6 +538,9 @@ export default function App() {
                         </div>
                         <div className="row">
                           <input className="txt-input" value={newEntryText} onChange={(e) => setNewEntryText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addEntry()} placeholder="Es. Referto XY da completare, campione con specie da verificare..." />
+                          {activeCategory === "programmati" && (
+                            <input type="date" className="date-input" value={newEntryDate} onChange={(e) => setNewEntryDate(e.target.value)} />
+                          )}
                           <button className="btn" onClick={addEntry}>+ Aggiungi</button>
                         </div>
                       </div>
@@ -761,8 +776,9 @@ function Thread({ item, draft, setDraft, onSend }) {
 function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster, editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide }) {
   const isEditing = editingId === item.id;
   const stale = isStale(item);
+  const dueToday = isDueToday(item);
   return (
-    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "")}>
+    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "") + (dueToday ? " due-today" : "")}>
       <div className="chk" onClick={() => onToggle(item)} />
       <div className="item-b">
         <div className="item-top">
@@ -777,6 +793,11 @@ function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, 
             {isMaster && <button className="master-btn" onClick={() => onHide(item)} title={item.hidden ? "Mostra" : "Nascondi"}>{item.hidden ? "👁️" : "🙈"}</button>}
           </div>
         </div>
+        {item.category === "programmati" && item.scheduled_date && (
+          <div className={"sched-badge" + (dueToday ? " due-today" : "")}>
+            📅 programmato per {fmtDate(item.scheduled_date)}{dueToday ? " — oggi!" : ""}
+          </div>
+        )}
         {stale && <div className="stale-badge">⚠️ ancora aperta, {dayLabel(item.open_at) === "Ieri" ? "aperta ieri" : "aperta " + dayLabel(item.open_at)}</div>}
         {isEditing && (
           <div className="edit-actions">
