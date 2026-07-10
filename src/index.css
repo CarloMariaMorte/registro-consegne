@@ -109,8 +109,6 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 
 /* briefing */
 .brief-form { display:flex; gap:6px; margin-bottom:14px; }
-.brief-btn { padding:8px 14px; border-radius:6px; background:#4f46e5; color:#fff; border:none; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; height:fit-content; }
-.brief-btn:hover { background:#4338ca; }
 .brief-card { border:1px solid #e2e8f0; border-left:3px solid #6366f1; background:#fff; padding:10px 12px; margin-bottom:6px; border-radius:6px; cursor:pointer; }
 .brief-card:hover { border-color:#c7d2fe; background:#fafaff; }
 .brief-meta { font-size:11px; color:#64748b; font-weight:600; }
@@ -128,6 +126,8 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .brief-readby { font-size:10.5px; color:#0d9488; margin-top:10px; padding-top:7px; border-top:1px solid #f1f5f9; }
 .brief-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; }
 .brief-tag { font-size:10px; padding:2px 9px; border-radius:999px; background:#eef2ff; color:#4338ca; font-weight:600; cursor:pointer; }
+.brief-btn { padding:8px 14px; border-radius:6px; background:#4f46e5; color:#fff; border:none; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; height:fit-content; }
+.brief-btn:hover { background:#4338ca; }
 .day-header { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 8px; }
 .day-header:first-child { margin-top:0; }
 .draft-points { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
@@ -154,3 +154,19 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .email-btn { padding:6px 12px; border-radius:6px; background:#fdf2f8; color:#be185d; border:1px solid #f9a8d4; font-size:11.5px; font-weight:600; cursor:pointer; }
 .email-btn:hover { background:#fce7f3; }
 .email-btn:disabled { opacity:.6; cursor:default; }
+
+/* briefing drafts */
+.brief-form-actions { display:flex; flex-direction:column; gap:6px; justify-content:flex-end; }
+.draft-btn { padding:8px 14px; border-radius:6px; background:#fff; color:#475569; border:1px solid #cbd5e1; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.draft-btn:hover { background:#f8fafc; }
+.drafts-section { border:1px dashed #cbd5e1; border-radius:8px; padding:10px; margin-bottom:14px; background:#f8fafc; }
+.drafts-title { font-size:11.5px; font-weight:700; color:#64748b; margin-bottom:8px; }
+.draft-card { border-style:dashed; }
+.draft-tag { font-size:9px; background:#64748b; color:#fff; padding:1px 6px; border-radius:999px; font-weight:700; margin-left:6px; text-transform:uppercase; }
+
+/* daily report */
+.daily-report-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:14px; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.daily-report-info { font-size:11.5px; color:#64748b; }
+.daily-report-btn { padding:8px 14px; border-radius:6px; background:#0f172a; color:#fff; border:none; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.daily-report-btn:hover { background:#1e293b; }
+.daily-report-btn:disabled { opacity:.6; cursor:default; }
