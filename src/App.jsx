@@ -103,6 +103,7 @@ export default function App() {
   const [editEntryText, setEditEntryText] = useState("");
   const [editingBriefId, setEditingBriefId] = useState(null);
   const [editBriefText, setEditBriefText] = useState("");
+  const [editBriefTags, setEditBriefTags] = useState("");
 
   const [showPwPanel, setShowPwPanel] = useState(false);
   const [pwNew, setPwNew] = useState("");
@@ -363,15 +364,25 @@ export default function App() {
     setEditingBriefId(b.id);
     const pts = (b.points && b.points.length) ? b.points : (b.text ? [b.text] : []);
     setEditBriefText(pts.join(POINT_SEP));
+    setEditBriefTags((b.tags || []).join(", "));
   };
-  const cancelEditBrief = () => { setEditingBriefId(null); setEditBriefText(""); };
+  const cancelEditBrief = () => { setEditingBriefId(null); setEditBriefText(""); setEditBriefTags(""); };
   const saveEditBrief = async (b) => {
     const points = editBriefText.split(POINT_SEP).map((s) => s.trim()).filter(Boolean);
     if (!points.length) return;
-    const { error } = await supabase.from("briefings").update({ points, text: null }).eq("id", b.id);
+    const tags = editBriefTags.split(",").map((t) => t.trim()).filter(Boolean);
+    const { error } = await supabase.from("briefings").update({ points, text: null, tags }).eq("id", b.id);
     if (error) { setErrorMsg("Errore nel modificare il riepilogo: " + error.message); return; }
     setErrorMsg(null);
     setEditingBriefId(null);
+    fetchBriefings();
+  };
+  const deleteBriefingDraft = async (b) => {
+    if (!window.confirm("Eliminare completamente questa bozza? Non si può recuperare.")) return;
+    const { error } = await supabase.from("briefings").delete().eq("id", b.id);
+    if (error) { setErrorMsg("Errore nell'eliminare la bozza: " + error.message); return; }
+    setErrorMsg(null);
+    if (editingBriefId === b.id) cancelEditBrief();
     fetchBriefings();
   };
   const toggleHideBrief = async (b) => {
@@ -652,21 +663,30 @@ export default function App() {
                           {!isEditing && (
                             <div className="master-actions">
                               <button className="master-btn" onClick={() => startEditBrief(b)} title="Modifica">✏️</button>
+                              <button className="master-btn" onClick={() => deleteBriefingDraft(b)} title="Elimina completamente">🗑️</button>
                             </div>
                           )}
                         </div>
                         {isEditing ? (
                           <>
                             <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga, separa i punti con una riga ---" />
+                            <input className="txt-input" style={{ marginTop: 6 }} value={editBriefTags} onChange={(e) => setEditBriefTags(e.target.value)} placeholder="Tag separati da virgola" />
                             <div className="edit-actions">
                               <button className="btn" onClick={() => saveEditBrief(b)}>Salva bozza</button>
                               <button className="cancel-btn" onClick={cancelEditBrief}>Annulla</button>
                             </div>
                           </>
                         ) : (
-                          <ul className="brief-points">
-                            {pts.map((p, i) => <li key={i} dangerouslySetInnerHTML={{ __html: formatPointHtml(p) }} />)}
-                          </ul>
+                          <>
+                            <ul className="brief-points">
+                              {pts.map((p, i) => <li key={i} dangerouslySetInnerHTML={{ __html: formatPointHtml(p) }} />)}
+                            </ul>
+                            {(b.tags || []).length > 0 && (
+                              <div className="brief-tags">
+                                {b.tags.map((t) => <span key={t} className="brief-tag">#{t}</span>)}
+                              </div>
+                            )}
+                          </>
                         )}
                         {!isEditing && (
                           <div style={{ marginTop: 8 }}>
@@ -722,6 +742,7 @@ export default function App() {
                           {isEditing ? (
                             <div onClick={(e) => e.stopPropagation()}>
                               <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga" />
+                              <input className="txt-input" style={{ marginTop: 6 }} value={editBriefTags} onChange={(e) => setEditBriefTags(e.target.value)} placeholder="Tag separati da virgola" />
                               <div className="edit-actions">
                                 <button className="btn" onClick={() => saveEditBrief(b)}>Salva</button>
                                 <button className="cancel-btn" onClick={cancelEditBrief}>Annulla</button>
