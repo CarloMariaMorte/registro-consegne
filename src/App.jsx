@@ -15,6 +15,7 @@ const CATEGORIES = [
   { id: "urgenze", label: "Urgenze", icon: "⚡" },
   { id: "note", label: "Note", icon: "📝" },
   { id: "programmati", label: "Programmati", icon: "📅" },
+  { id: "contestazioni", label: "Contestazioni", icon: "⚖️" },
 ];
 
 const reparto = (id) => REPARTI.find((r) => r.id === id) || { label: id, icon: "" };
