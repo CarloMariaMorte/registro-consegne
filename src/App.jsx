@@ -85,16 +85,24 @@ function generateReportPdf(report) {
     y += 6;
     doc.setFontSize(9.5);
     section.items.forEach((item) => {
-      if (y > 265) { doc.addPage(); y = 20; }
+      if (y > 260) { doc.addPage(); y = 20; }
       doc.setTextColor(51, 65, 85);
       const lines = doc.splitTextToSize(`• ${item.text}`, 178);
       doc.text(lines, 18, y);
       y += lines.length * 5;
-      doc.setTextColor(15, 118, 110);
       doc.setFontSize(8.5);
-      doc.text(`Nota di ${item.author} · ore ${item.time}`, 18, y);
+      doc.setTextColor(15, 118, 110);
+      const byline = `Nota di ${item.author} · ore ${item.time}`;
+      doc.text(byline, 18, y);
+      if (item.emailSent) {
+        const bylineWidth = doc.getTextWidth(byline);
+        doc.setTextColor(185, 28, 28);
+        doc.setFont(undefined, "bold");
+        doc.text(`   ⚠ Comunicazione interna già inviata — ${item.emailSentBy}, ${item.emailSentAt}`, 18 + bylineWidth, y);
+        doc.setFont(undefined, "normal");
+      }
       doc.setFontSize(9.5);
-      y += 7;
+      y += 8;
     });
     y += 4;
   });
@@ -341,7 +349,14 @@ export default function App() {
     if (openSospesi.length === 0) { setErrorMsg("Nessun sospeso aperto da segnalare al momento."); return; }
     const sections = REPARTI.map((r) => ({
       reparto: r.label,
-      items: openSospesi.filter((e) => e.reparto === r.id).map((e) => ({ text: e.text, author: e.open_by, time: fmtTime(e.open_at) })),
+      items: openSospesi.filter((e) => e.reparto === r.id).map((e) => ({
+        text: e.text,
+        author: e.open_by,
+        time: fmtTime(e.open_at),
+        emailSent: !!e.email_sent,
+        emailSentBy: e.email_sent_by || null,
+        emailSentAt: e.email_sent_at ? fmtTime(e.email_sent_at) : null,
+      })),
     })).filter((s) => s.items.length > 0);
 
     setSendingDailyReport(true);
