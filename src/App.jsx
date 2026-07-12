@@ -66,6 +66,22 @@ function formatPointHtml(text) {
   return html;
 }
 
+function formatEntryTextHtml(text, profiles) {
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const names = (profiles || []).map((p) => p.display_name).filter(Boolean).sort((a, b) => b.length - a.length);
+  let html = esc;
+  names.forEach((name) => {
+    const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp("@" + escName, "g"), `<span class="mention">@${name}</span>`);
+  });
+  return html;
+}
+
+function extractMentions(text, profiles) {
+  const names = (profiles || []).map((p) => p.display_name).filter(Boolean);
+  return names.filter((name) => text.includes("@" + name));
+}
+
 function generateReportPdf(report) {
   const doc = new jsPDF();
   let y = 18;
@@ -124,6 +140,7 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [briefings, setBriefings] = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
+  const [allProfiles, setAllProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
 
@@ -241,10 +258,15 @@ export default function App() {
     setDailyReports(data || []);
   }, []);
 
+  const fetchAllProfiles = useCallback(async () => {
+    const { data, error } = await supabase.from("profiles").select("id, display_name").not("display_name", "is", null);
+    if (!error) setAllProfiles(data || []);
+  }, []);
+
   useEffect(() => {
     if (!session) return;
     (async () => {
-      await Promise.all([fetchEntries(), fetchBriefings(), fetchDailyReports()]);
+      await Promise.all([fetchEntries(), fetchBriefings(), fetchDailyReports(), fetchAllProfiles()]);
       setLoading(false);
     })();
 
@@ -256,7 +278,7 @@ export default function App() {
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
 
     return () => supabase.removeChannel(channel);
-  }, [session, fetchEntries, fetchBriefings, fetchDailyReports]);
+  }, [session, fetchEntries, fetchBriefings, fetchDailyReports, fetchAllProfiles]);
 
   const addEntry = async () => {
     const text = newEntryText.trim();
@@ -264,6 +286,7 @@ export default function App() {
     if (activeCategory === "programmati" && !newEntryDate) { setErrorMsg("Seleziona una data per la voce programmata"); return; }
     setNewEntryText("");
     setNewEntryCC(false);
+    const mentions = extractMentions(text, allProfiles);
     const { error } = await supabase.from("entries").insert({
       reparto: selectedReparto,
       category: activeCategory,
@@ -272,6 +295,7 @@ export default function App() {
       cc: newEntryCC,
       scheduled_date: activeCategory === "programmati" ? newEntryDate : null,
       shared_with: [],
+      mentions,
     });
     setNewEntryDate("");
     if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
@@ -559,6 +583,9 @@ export default function App() {
   const openCount = visibleEntries.filter((e) => !e.done).length;
   const ccCount = visibleEntries.filter((e) => e.cc && !e.done).length;
   const ccEntries = visibleEntries.filter((e) => e.cc);
+  const isMentioned = (e) => (e.mentions || []).includes(currentUser) || (e.replies || []).some((r) => r.text && r.text.includes("@" + currentUser));
+  const mentionsCount = visibleEntries.filter((e) => isMentioned(e) && !e.done).length;
+  const myMentions = visibleEntries.filter((e) => isMentioned(e));
   const archivedEntries = visibleEntries.filter((e) => isArchived(e) && isCurrentMonth(e.resolved_at)).sort((a, b) => new Date(b.resolved_at) - new Date(a.resolved_at));
 
   const q = searchQuery.trim().toLowerCase();
@@ -583,6 +610,7 @@ export default function App() {
     onStartEdit: startEditEntry, onSaveEdit: saveEditEntry, onCancelEdit: cancelEditEntry, onHide: toggleHideEntry,
     expandedThreads, onToggleThread: toggleThread,
     sharePickerOpen, onToggleSharePicker: toggleSharePicker, onShareTarget: toggleShareTarget,
+    allProfiles,
   };
 
   return (
@@ -607,6 +635,9 @@ export default function App() {
             </button>
             <button className={"seg-btn " + (activePanel === "cc" ? "active" : "")} onClick={() => setActivePanel("cc")}>
               Customer Care <span className="badge pink">{ccCount}</span>
+            </button>
+            <button className={"seg-btn " + (activePanel === "menzioni" ? "active" : "")} onClick={() => setActivePanel("menzioni")}>
+              Menzioni <span className="badge">{mentionsCount}</span>
             </button>
             <button className={"seg-btn " + (activePanel === "archivio" ? "active" : "")} onClick={() => setActivePanel("archivio")}>
               Archivio <span className="badge">{archivedEntries.length}</span>
@@ -719,6 +750,9 @@ export default function App() {
                         </div>
 
                         <div className="field-label">✍️ Scrivi qui la nota per questo settore</div>
+                        {activeCategory === "sospesi" && (
+                          <div className="sospesi-hint">💡 Ricorda: inizia la nota con il cognome del proprietario del campione (serve per l'oggetto delle comunicazioni automatiche al Customer Care)</div>
+                        )}
                         <div className="form">
                           <div className="chips">
                             {CATEGORIES.map((c) => (
@@ -732,7 +766,39 @@ export default function App() {
                             </button>
                           </div>
                           <div className="row">
-                            <input className="txt-input" value={newEntryText} onChange={(e) => setNewEntryText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addEntry()} placeholder="Es. Referto XY da completare, campione con specie da verificare..." />
+                            <div className="mention-wrap" style={{ flex: 1 }}>
+                              <input
+                                className="txt-input"
+                                style={{ width: "100%" }}
+                                value={newEntryText}
+                                onChange={(e) => setNewEntryText(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && addEntry()}
+                                placeholder="Es. Referto XY da completare, oppure scrivi @ per citare qualcuno..."
+                              />
+                              {(() => {
+                                const m = newEntryText.match(/@([A-Za-zÀ-ÿ' .]*)$/);
+                                if (!m) return null;
+                                const partial = m[1].toLowerCase();
+                                const matches = allProfiles.filter((p) => p.display_name && p.display_name.toLowerCase().includes(partial)).slice(0, 6);
+                                if (!matches.length) return null;
+                                return (
+                                  <div className="mention-dropdown">
+                                    {matches.map((p) => (
+                                      <div
+                                        key={p.id}
+                                        className="mention-item"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          setNewEntryText(newEntryText.replace(/@([A-Za-zÀ-ÿ' .]*)$/, "@" + p.display_name + " "));
+                                        }}
+                                      >
+                                        {p.display_name}
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                             {activeCategory === "programmati" && (
                               <input type="date" className="date-input" value={newEntryDate} onChange={(e) => setNewEntryDate(e.target.value)} />
                             )}
@@ -934,6 +1000,17 @@ export default function App() {
             </div>
           )}
 
+          {activePanel === "menzioni" && (
+            <div className="panel active">
+              <div className="panel-intro">Tutte le note in cui qualcuno ti ha citato con @, da qualsiasi settore. Rispondi direttamente da qui.</div>
+              {myMentions.length === 0 ? (
+                <div className="empty">Nessuna menzione per ora.</div>
+              ) : (
+                myMentions.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
+              )}
+            </div>
+          )}
+
           {activePanel === "archivio" && (
             <div className="panel active">
               <div className="panel-intro">Voci risolte, archiviate automaticamente dal giorno dopo la chiusura. Visibili qui fino a fine mese in corso.</div>
@@ -1038,17 +1115,39 @@ function EmailBox({ item, onSend, sendingId }) {
   );
 }
 
-function Thread({ item, draft, setDraft, onSend }) {
+function Thread({ item, draft, setDraft, onSend, allProfiles }) {
+  const m = draft.match(/@([A-Za-zÀ-ÿ' .]*)$/);
+  const partial = m ? m[1].toLowerCase() : null;
+  const matches = partial !== null ? (allProfiles || []).filter((p) => p.display_name && p.display_name.toLowerCase().includes(partial)).slice(0, 6) : [];
+
   return (
     <div className="cc-thread">
       {(item.replies || []).map((r, i) => (
         <div className="cc-reply" key={i}>
           <div className="cc-reply-meta">{r.author} · {fmtTime(r.time)}</div>
-          <div className="cc-reply-text">{r.text}</div>
+          <div className="cc-reply-text" dangerouslySetInnerHTML={{ __html: formatEntryTextHtml(r.text, allProfiles) }} />
         </div>
       ))}
       <div className="cc-reply-form">
-        <input className="cc-reply-input" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onSend()} placeholder="Rispondi in questa nota..." />
+        <div className="mention-wrap" style={{ flex: 1 }}>
+          <input className="cc-reply-input" style={{ width: "100%" }} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onSend()} placeholder="Rispondi in questa nota, oppure scrivi @ per citare qualcuno..." />
+          {matches.length > 0 && (
+            <div className="mention-dropdown">
+              {matches.map((p) => (
+                <div
+                  key={p.id}
+                  className="mention-item"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDraft(draft.replace(/@([A-Za-zÀ-ÿ' .]*)$/, "@" + p.display_name + " "));
+                  }}
+                >
+                  {p.display_name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="cc-reply-btn" onClick={onSend}>Invia</button>
       </div>
     </div>
@@ -1058,7 +1157,7 @@ function Thread({ item, draft, setDraft, onSend }) {
 function ItemRow({
   item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster,
   editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide,
-  expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget,
+  expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget, allProfiles,
 }) {
   const isEditing = editingId === item.id;
   const stale = isStale(item);
@@ -1078,7 +1177,7 @@ function ItemRow({
           {isEditing ? (
             <textarea className="edit-textarea" value={editText} onChange={(e) => setEditText(e.target.value)} />
           ) : (
-            <div className="txt">{item.text}</div>
+            <div className="txt" dangerouslySetInnerHTML={{ __html: formatEntryTextHtml(item.text, allProfiles) }} />
           )}
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             <button className={"tag-btn " + (item.cc ? "on" : "")} onClick={() => onTag(item)} title="Notifica Customer Care">🏷️</button>
@@ -1148,7 +1247,7 @@ function ItemRow({
         )}
 
         {threadOpen && (
-          <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} />
+          <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} allProfiles={allProfiles} />
         )}
       </div>
     </div>
