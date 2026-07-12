@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { jsPDF } from "jspdf";
 import { supabase } from "./supabaseClient";
 
 const REPARTI = [
-  { id: "ematologia", label: "Ematologia", icon: "🩸" },
-  { id: "urine", label: "Urine", icon: "💧" },
-  { id: "foresi", label: "Elettroforesi", icon: "📈" },
-  { id: "coag", label: "Coagulazione", icon: "⏱️" },
-  { id: "chimica_ormo", label: "Chimica & Ormo", icon: "⚗️" },
+  { id: "ematologia", label: "Ematologia", icon: "🩸", bg: "#fee2e2", text: "#b91c1c", border: "#fca5a5", accent: "#ef4444" },
+  { id: "urine", label: "Urine", icon: "💧", bg: "#fef9c3", text: "#a16207", border: "#fde047", accent: "#eab308" },
+  { id: "foresi", label: "Elettroforesi", icon: "📈", bg: "#dcfce7", text: "#166534", border: "#86efac", accent: "#22c55e" },
+  { id: "coag", label: "Coagulazione", icon: "⏱️", bg: "#fdf2f8", text: "#db2777", border: "#f9a8d4", accent: "#ec4899" },
+  { id: "chimica_ormo", label: "Chimica & Ormo", icon: "⚗️", bg: "#ecfeff", text: "#0e7490", border: "#67e8f9", accent: "#06b6d4" },
 ];
 
 const CATEGORIES = [
@@ -43,6 +44,7 @@ const fmtDate = (dateStr) => {
   const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
 };
+const fmtDateShort = (iso) => new Date(iso).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
 
 function dayLabel(iso) {
   const d = new Date(iso);
@@ -64,6 +66,41 @@ function formatPointHtml(text) {
   return html;
 }
 
+function generateReportPdf(report) {
+  const doc = new jsPDF();
+  let y = 18;
+  doc.setFontSize(15);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Report Giornaliero — Campioni Sospesi", 14, y);
+  y += 7;
+  doc.setFontSize(9.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Inviato da ${report.operator} · ${fmtDateShort(report.created_at)} ${fmtTime(report.created_at)}`, 14, y);
+  y += 10;
+  (report.sections || []).forEach((section) => {
+    if (y > 265) { doc.addPage(); y = 20; }
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text(section.reparto, 14, y);
+    y += 6;
+    doc.setFontSize(9.5);
+    section.items.forEach((item) => {
+      if (y > 265) { doc.addPage(); y = 20; }
+      doc.setTextColor(51, 65, 85);
+      const lines = doc.splitTextToSize(`• ${item.text}`, 178);
+      doc.text(lines, 18, y);
+      y += lines.length * 5;
+      doc.setTextColor(15, 118, 110);
+      doc.setFontSize(8.5);
+      doc.text(`Nota di ${item.author} · ore ${item.time}`, 18, y);
+      doc.setFontSize(9.5);
+      y += 7;
+    });
+    y += 4;
+  });
+  doc.output("dataurlnewwindow");
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -78,11 +115,16 @@ export default function App() {
 
   const [entries, setEntries] = useState([]);
   const [briefings, setBriefings] = useState([]);
+  const [dailyReports, setDailyReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
 
   const [activePanel, setActivePanel] = useState("registro");
   const [selectedReparto, setSelectedReparto] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [resolvedOpen, setResolvedOpen] = useState({});
+  const [expandedThreads, setExpandedThreads] = useState({});
+  const [sharePickerOpen, setSharePickerOpen] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("sospesi");
   const [newEntryText, setNewEntryText] = useState("");
@@ -185,10 +227,16 @@ export default function App() {
     setBriefings(data || []);
   }, []);
 
+  const fetchDailyReports = useCallback(async () => {
+    const { data, error } = await supabase.from("daily_reports").select("*").order("created_at", { ascending: false });
+    if (error) { setErrorMsg("Errore nel caricare lo storico report: " + error.message); return; }
+    setDailyReports(data || []);
+  }, []);
+
   useEffect(() => {
     if (!session) return;
     (async () => {
-      await Promise.all([fetchEntries(), fetchBriefings()]);
+      await Promise.all([fetchEntries(), fetchBriefings(), fetchDailyReports()]);
       setLoading(false);
     })();
 
@@ -196,10 +244,11 @@ export default function App() {
       .channel("registro-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, fetchEntries)
       .on("postgres_changes", { event: "*", schema: "public", table: "briefings" }, fetchBriefings)
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_reports" }, fetchDailyReports)
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
 
     return () => supabase.removeChannel(channel);
-  }, [session, fetchEntries, fetchBriefings]);
+  }, [session, fetchEntries, fetchBriefings, fetchDailyReports]);
 
   const addEntry = async () => {
     const text = newEntryText.trim();
@@ -214,6 +263,7 @@ export default function App() {
       open_by: currentUser,
       cc: newEntryCC,
       scheduled_date: activeCategory === "programmati" ? newEntryDate : null,
+      shared_with: [],
     });
     setNewEntryDate("");
     if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
@@ -236,6 +286,18 @@ export default function App() {
     setErrorMsg(null);
     fetchEntries();
   };
+
+  const toggleShareTarget = async (item, targetId) => {
+    const has = (item.shared_with || []).includes(targetId);
+    const nextShared = has ? item.shared_with.filter((x) => x !== targetId) : [...(item.shared_with || []), targetId];
+    const { error } = await supabase.from("entries").update({ shared_with: nextShared }).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nel condividere la voce: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
+  };
+
+  const toggleSharePicker = (id) => setSharePickerOpen((p) => ({ ...p, [id]: !p[id] }));
+  const toggleThread = (id) => setExpandedThreads((p) => ({ ...p, [id]: !p[id] }));
 
   const sendReply = async (item) => {
     const text = (replyDrafts[item.id] || "").trim();
@@ -291,8 +353,10 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Invio fallito");
+      await supabase.from("daily_reports").insert({ operator: currentUser, sections });
       setErrorMsg(null);
       setReportMsg(`Report giornaliero inviato: ${openSospesi.length} sospesi in ${sections.length} settori.`);
+      fetchDailyReports();
     } catch (e) {
       setErrorMsg("Errore nell'invio del report giornaliero: " + e.message);
     } finally {
@@ -487,16 +551,23 @@ export default function App() {
     ? visibleEntries.filter((e) => [e.text, e.open_by, e.resolved_by || "", reparto(e.reparto).label, catInfo(e.category).label].join(" ").toLowerCase().includes(q))
     : [];
 
-  const scoped = selectedReparto ? visibleEntries.filter((e) => e.reparto === selectedReparto && !isArchived(e)) : [];
+  const scoped = selectedReparto ? visibleEntries.filter((e) => (e.reparto === selectedReparto || (e.shared_with || []).includes(selectedReparto)) && !isArchived(e)) : [];
 
   const allBriefTags = [...new Set(visibleBriefingsAll.flatMap((b) => b.tags || []))];
   const visibleBriefings = briefTagFilter ? visibleBriefingsAll.filter((b) => (b.tags || []).includes(briefTagFilter)) : visibleBriefingsAll;
+
+  const allProgrammatiToday = visibleEntries.filter((e) => e.category === "programmati" && !e.done && e.scheduled_date === todayStr());
+  const allProgrammatiUpcoming = visibleEntries
+    .filter((e) => e.category === "programmati" && !e.done && e.scheduled_date && e.scheduled_date !== todayStr())
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
   const entryHandlers = {
     onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
     onSendEmail: sendCommunication, sendingEmailId, isMaster,
     editingId: editingEntryId, editText: editEntryText, setEditText: setEditEntryText,
     onStartEdit: startEditEntry, onSaveEdit: saveEditEntry, onCancelEdit: cancelEditEntry, onHide: toggleHideEntry,
+    expandedThreads, onToggleThread: toggleThread,
+    sharePickerOpen, onToggleSharePicker: toggleSharePicker, onShareTarget: toggleShareTarget,
   };
 
   return (
@@ -550,79 +621,152 @@ export default function App() {
       ) : (
         <>
           {activePanel === "registro" && (
-            <div className="panel active">
-              <div className="search-wrap">
-                <span className="search-icon">🔍</span>
-                <input className="search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cerca nome, specie, problema, ID, settore..." />
+            <div className="app-layout">
+              <div className="sidebar">
+                <div className="cal-title">📅 Programmati — tutti i settori</div>
+                <div className="cal-section">Oggi</div>
+                {allProgrammatiToday.length === 0 ? (
+                  <div className="cal-empty">Nessun programmato per oggi.</div>
+                ) : allProgrammatiToday.map((e) => {
+                  const r = reparto(e.reparto);
+                  return (
+                    <div key={e.id} className="cal-item today" style={{ borderLeft: `4px solid ${r.accent}` }}>
+                      {e.text}
+                      <span className="cal-tag" style={{ background: "rgba(255,255,255,.25)", color: "#fff" }}>{r.icon} {r.label}</span>
+                    </div>
+                  );
+                })}
+                <div className="cal-section">Prossimi giorni</div>
+                {allProgrammatiUpcoming.length === 0 ? (
+                  <div className="cal-empty">Nulla nei prossimi giorni.</div>
+                ) : allProgrammatiUpcoming.map((e) => {
+                  const r = reparto(e.reparto);
+                  return (
+                    <div key={e.id} className="cal-item" style={{ borderLeft: `4px solid ${r.accent}` }}>
+                      <span className="cal-date">{fmtDate(e.scheduled_date)}</span>
+                      {e.text}
+                      <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                    </div>
+                  );
+                })}
               </div>
 
-              {q ? (
-                <>
-                  <div className="hint" style={{ padding: "0 0 10px" }}>{searchResults.length} risultati in tutti i settori</div>
-                  {searchResults.length === 0 ? (
-                    <div className="empty">Nessun risultato.</div>
-                  ) : (
-                    searchResults.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="pillrow">
-                    {REPARTI.map((r) => {
-                      const n = visibleEntries.filter((e) => e.reparto === r.id && !e.done).length;
-                      const active = selectedReparto === r.id;
-                      return (
-                        <button key={r.id} className={"pill " + (active ? "active" : "")} onClick={() => setSelectedReparto(active ? null : r.id)}>
-                          {r.icon} {r.label} <span className="cnt">{n}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="main-content">
+                <div className="search-wrap">
+                  <span className="search-icon">🔍</span>
+                  <input className="search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cerca nome, specie, problema, ID, settore..." />
+                </div>
 
-                  {!selectedReparto ? (
-                    <div className="hint">Seleziona un settore ↑ per vedere il registro.</div>
-                  ) : (
-                    <>
-                      <div className="form">
-                        <div className="chips">
-                          {CATEGORIES.map((c) => (
-                            <button key={c.id} className={"chip " + (activeCategory === c.id ? "on-" + c.id : "")} onClick={() => setActiveCategory(c.id)}>
-                              {c.icon} {c.label}
-                            </button>
-                          ))}
-                          <span className="chip-sep" />
-                          <button className={"cc-chip " + (newEntryCC ? "on" : "")} onClick={() => setNewEntryCC(!newEntryCC)}>
-                            🏷️ Notifica Customer Care
+                {q ? (
+                  <>
+                    <div className="hint" style={{ padding: "0 0 10px" }}>{searchResults.length} risultati in tutti i settori</div>
+                    {searchResults.length === 0 ? (
+                      <div className="empty">Nessun risultato.</div>
+                    ) : (
+                      searchResults.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="pillrow">
+                      {REPARTI.map((r) => {
+                        const n = visibleEntries.filter((e) => (e.reparto === r.id || (e.shared_with || []).includes(r.id)) && !e.done).length;
+                        const active = selectedReparto === r.id;
+                        return (
+                          <button key={r.id} className={"pill " + (active ? "active" : "")} style={{ borderBottom: `4px solid ${r.accent}` }} onClick={() => { setSelectedReparto(active ? null : r.id); setCategoryFilter("all"); }}>
+                            {r.icon} {r.label} <span className="cnt">{n}</span>
                           </button>
-                        </div>
-                        <div className="row">
-                          <input className="txt-input" value={newEntryText} onChange={(e) => setNewEntryText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addEntry()} placeholder="Es. Referto XY da completare, campione con specie da verificare..." />
-                          {activeCategory === "programmati" && (
-                            <input type="date" className="date-input" value={newEntryDate} onChange={(e) => setNewEntryDate(e.target.value)} />
-                          )}
-                          <button className="btn" onClick={addEntry}>+ Aggiungi</button>
-                        </div>
-                      </div>
+                        );
+                      })}
+                    </div>
 
-                      {scoped.length === 0 ? (
-                        <div className="empty">Nessuna voce in questo settore.</div>
-                      ) : (
-                        CATEGORIES.map((cat) => {
-                          const items = scoped.filter((e) => e.category === cat.id);
-                          if (!items.length) return null;
-                          const openN = items.filter((i) => !i.done).length;
-                          return (
-                            <div className="grp" key={cat.id}>
-                              <div className="grp-h">{cat.icon} {cat.label} <span className="cnt">{openN} aperte</span></div>
-                              {items.map((item) => <ItemRow key={item.id} item={item} {...entryHandlers} />)}
-                            </div>
-                          );
-                        })
-                      )}
-                    </>
-                  )}
-                </>
-              )}
+                    {!selectedReparto ? (
+                      <div className="hint">Seleziona un settore ↑ per vedere il registro.</div>
+                    ) : (
+                      <>
+                        <div className="reparto-heading" style={{ borderLeftColor: reparto(selectedReparto).accent }}>
+                          {reparto(selectedReparto).icon} Sei nella bacheca {reparto(selectedReparto).label}
+                        </div>
+
+                        <div className="field-label">Filtra per categoria</div>
+                        <div className="pillrow">
+                          <button className={"pill " + (categoryFilter === "all" ? "active" : "")} onClick={() => setCategoryFilter("all")}>
+                            Tutte <span className="cnt">{scoped.filter((e) => !e.done).length}</span>
+                          </button>
+                          {CATEGORIES.map((c) => {
+                            const n = scoped.filter((e) => e.category === c.id && !e.done).length;
+                            return (
+                              <button key={c.id} className={"pill " + (categoryFilter === c.id ? "active" : "")} onClick={() => setCategoryFilter(c.id)}>
+                                {c.icon} {c.label} <span className="cnt">{n}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="field-label">✍️ Scrivi qui la nota per questo settore</div>
+                        <div className="form">
+                          <div className="chips">
+                            {CATEGORIES.map((c) => (
+                              <button key={c.id} className={"chip " + (activeCategory === c.id ? "on-" + c.id : "")} onClick={() => setActiveCategory(c.id)}>
+                                {c.icon} {c.label}
+                              </button>
+                            ))}
+                            <span className="chip-sep" />
+                            <button className={"cc-chip " + (newEntryCC ? "on" : "")} onClick={() => setNewEntryCC(!newEntryCC)}>
+                              🏷️ Notifica Customer Care
+                            </button>
+                          </div>
+                          <div className="row">
+                            <input className="txt-input" value={newEntryText} onChange={(e) => setNewEntryText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addEntry()} placeholder="Es. Referto XY da completare, campione con specie da verificare..." />
+                            {activeCategory === "programmati" && (
+                              <input type="date" className="date-input" value={newEntryDate} onChange={(e) => setNewEntryDate(e.target.value)} />
+                            )}
+                            <button className="btn" onClick={addEntry}>+ Aggiungi</button>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const cats = categoryFilter === "all" ? CATEGORIES : CATEGORIES.filter((c) => c.id === categoryFilter);
+                          if (scoped.length === 0) return <div className="empty">Nessuna voce in questo settore.</div>;
+                          return cats.map((cat) => {
+                            const items = scoped.filter((e) => e.category === cat.id);
+                            if (!items.length) {
+                              if (categoryFilter === "all") return null;
+                              return (
+                                <div className="grp" key={cat.id}>
+                                  <div className="grp-h">{cat.icon} {cat.label} <span className="cnt">0 aperte</span></div>
+                                  <div className="empty">Nessuna voce in questa categoria.</div>
+                                </div>
+                              );
+                            }
+                            const open = items.filter((i) => !i.done);
+                            const resolved = items.filter((i) => i.done);
+                            const key = selectedReparto + ":" + cat.id;
+                            return (
+                              <div className="grp" key={cat.id}>
+                                <div className="grp-h">{cat.icon} {cat.label} <span className="cnt">{open.length} aperte</span></div>
+                                {open.length ? open.map((item) => <ItemRow key={item.id} item={item} viewingReparto={selectedReparto} {...entryHandlers} />) : (!resolved.length && <div className="empty">Nessuna voce.</div>)}
+                                {resolved.length > 0 && (
+                                  <>
+                                    <div className="resolved-toggle" onClick={() => setResolvedOpen((p) => ({ ...p, [key]: !p[key] }))}>
+                                      {resolvedOpen[key] ? "▾" : "▸"} ✓ {resolved.length} risolte oggi
+                                    </div>
+                                    {resolvedOpen[key] && (
+                                      <div className="resolved-list">
+                                        {resolved.map((item) => <ItemRow key={item.id} item={item} viewingReparto={selectedReparto} {...entryHandlers} />)}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -669,7 +813,7 @@ export default function App() {
                         </div>
                         {isEditing ? (
                           <>
-                            <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga, separa i punti con una riga ---" />
+                            <textarea className="edit-textarea-brief" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga, separa i punti con una riga ---" />
                             <input className="txt-input" style={{ marginTop: 6 }} value={editBriefTags} onChange={(e) => setEditBriefTags(e.target.value)} placeholder="Tag separati da virgola" />
                             <div className="edit-actions">
                               <button className="btn" onClick={() => saveEditBrief(b)}>Salva bozza</button>
@@ -741,7 +885,7 @@ export default function App() {
 
                           {isEditing ? (
                             <div onClick={(e) => e.stopPropagation()}>
-                              <textarea className="edit-textarea" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga" />
+                              <textarea className="edit-textarea-brief" value={editBriefText} onChange={(e) => setEditBriefText(e.target.value)} placeholder="Un punto per riga" />
                               <input className="txt-input" style={{ marginTop: 6 }} value={editBriefTags} onChange={(e) => setEditBriefTags(e.target.value)} placeholder="Tag separati da virgola" />
                               <div className="edit-actions">
                                 <button className="btn" onClick={() => saveEditBrief(b)}>Salva</button>
@@ -787,31 +931,36 @@ export default function App() {
           )}
 
           {activePanel === "cc" && (
-            <div className="panel active">
-              <div className="daily-report-box">
-                <div className="daily-report-info">A fine giornata, invia un riepilogo di tutti i sospesi ancora aperti, organizzato per settore.</div>
-                <button className="daily-report-btn" onClick={sendDailyReport} disabled={sendingDailyReport}>
-                  {sendingDailyReport ? "Invio in corso..." : "📮 Invia report giornaliero"}
-                </button>
-              </div>
-              <div className="panel-intro">Tutte le note taggate 🏷️ da qualsiasi settore. Rispondi qui per comunicare col laboratorio — la risposta appare anche nella nota originale.</div>
-              {ccEntries.length === 0 ? (
-                <div className="empty">Nessuna nota taggata al momento.</div>
-              ) : (
-                ccEntries.map((item) => (
-                  <div className="cc-card" key={item.id}>
-                    <div className="cc-tags">
-                      <span className="cc-tag">{reparto(item.reparto).icon} {reparto(item.reparto).label}</span>
-                      <span className="cc-tag">{catInfo(item.category).icon} {catInfo(item.category).label}</span>
-                      {item.done && <span className="cc-tag">risolto</span>}
+            <div className="app-layout">
+              <div className="sidebar">
+                <div className="cal-title">📮 Report giornalieri inviati</div>
+                {dailyReports.length === 0 ? (
+                  <div className="cal-empty">Nessun report inviato ancora.</div>
+                ) : dailyReports.map((r) => (
+                  <div key={r.id} className="cal-item">
+                    <span className="cal-date">{fmtDateShort(r.created_at)} · {fmtTime(r.created_at)}</span>
+                    Inviato da <b>{r.operator}</b>
+                    <div style={{ marginTop: 6 }}>
+                      <a className="pdf-link" onClick={() => generateReportPdf(r)}>📄 Apri PDF</a>
                     </div>
-                    <div className="txt">{item.text}</div>
-                    <Trace item={item} />
-                    <EmailBox item={item} onSend={sendCommunication} sendingId={sendingEmailId} />
-                    <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => sendReply(item)} />
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+
+              <div className="main-content">
+                <div className="daily-report-box">
+                  <div className="daily-report-info">A fine giornata, invia un riepilogo di tutti i sospesi ancora aperti, organizzato per settore.</div>
+                  <button className="daily-report-btn" onClick={sendDailyReport} disabled={sendingDailyReport}>
+                    {sendingDailyReport ? "Invio in corso..." : "📮 Invia report giornaliero"}
+                  </button>
+                </div>
+                <div className="panel-intro">Tutte le note taggate 🏷️ da qualsiasi settore. Rispondi qui per comunicare col laboratorio — la risposta appare anche nella nota originale.</div>
+                {ccEntries.length === 0 ? (
+                  <div className="empty">Nessuna nota taggata al momento.</div>
+                ) : (
+                  ccEntries.map((item) => <ItemRow key={item.id} item={item} showTags {...entryHandlers} />)
+                )}
+              </div>
             </div>
           )}
 
@@ -891,10 +1040,21 @@ function Thread({ item, draft, setDraft, onSend }) {
   );
 }
 
-function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster, editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide }) {
+function ItemRow({
+  item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster,
+  editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide,
+  expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget,
+}) {
   const isEditing = editingId === item.id;
   const stale = isStale(item);
   const dueToday = isDueToday(item);
+  const home = reparto(item.reparto);
+  const isHomeView = viewingReparto && viewingReparto === item.reparto;
+  const sharedHere = viewingReparto && viewingReparto !== item.reparto;
+  const shareTargets = REPARTI.filter((r) => r.id !== item.reparto);
+  const threadOpen = !!expandedThreads[item.id];
+  const replyCount = (item.replies || []).length;
+
   return (
     <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "") + (dueToday ? " due-today" : "")}>
       <div className="chk" onClick={() => onToggle(item)} />
@@ -911,6 +1071,21 @@ function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, 
             {isMaster && <button className="master-btn" onClick={() => onHide(item)} title={item.hidden ? "Mostra" : "Nascondi"}>{item.hidden ? "👁️" : "🙈"}</button>}
           </div>
         </div>
+
+        {sharedHere && (
+          <div className="share-badge" style={{ background: home.bg, color: home.text, border: `1px solid ${home.border}` }}>
+            🔗 condivisa da {home.icon} {home.label}
+          </div>
+        )}
+        {isHomeView && (item.shared_with || []).length > 0 && (
+          <div className="share-badge">
+            🔗 condivisa anche con: {item.shared_with.map((id) => {
+              const r2 = reparto(id);
+              return <span key={id} style={{ color: r2.text, fontWeight: 700 }}>{r2.icon} {r2.label} </span>;
+            })}
+          </div>
+        )}
+
         {item.category === "programmati" && item.scheduled_date && !stale && (
           <div className={"sched-badge" + (dueToday ? " due-today" : "")}>
             📅 programmato per {fmtDate(item.scheduled_date)}{dueToday ? " — oggi!" : ""}
@@ -929,13 +1104,36 @@ function ItemRow({ item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, 
             <button className="cancel-btn" onClick={onCancelEdit}>Annulla</button>
           </div>
         )}
-        {showTags && <div className="grp-h" style={{ marginTop: 5 }}>{reparto(item.reparto).icon} {reparto(item.reparto).label} · {catInfo(item.category).icon} {catInfo(item.category).label}</div>}
+        {showTags && <div className="grp-h" style={{ marginTop: 5 }}>{home.icon} {home.label} · {catInfo(item.category).icon} {catInfo(item.category).label}</div>}
         <Trace item={item} />
-        {item.cc && (
-          <>
-            <EmailBox item={item} onSend={onSendEmail} sendingId={sendingEmailId} />
-            <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} />
-          </>
+
+        {item.cc && <EmailBox item={item} onSend={onSendEmail} sendingId={sendingEmailId} />}
+
+        <div className="item-actions">
+          <span className="reply-toggle" onClick={() => onToggleThread(item.id)}>💬 {replyCount ? replyCount + " risposte" : "Rispondi"}</span>
+          {isHomeView && <span className="share-toggle" onClick={() => onToggleSharePicker(item.id)}>🔗 Condividi</span>}
+        </div>
+
+        {isHomeView && sharePickerOpen[item.id] && (
+          <div className="share-picker">
+            {shareTargets.map((r) => {
+              const on = (item.shared_with || []).includes(r.id);
+              return (
+                <button
+                  key={r.id}
+                  className="share-chip"
+                  style={on ? { background: r.text, borderColor: r.text, color: "#fff" } : { borderColor: r.border, color: r.text }}
+                  onClick={() => onShareTarget(item, r.id)}
+                >
+                  {r.icon} {r.label}{on ? " ×" : ""}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {threadOpen && (
+          <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} />
         )}
       </div>
     </div>
