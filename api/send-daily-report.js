@@ -24,7 +24,8 @@ export default async function handler(req, res) {
   for (const section of sections) {
     body += `=== ${String(section.reparto).toUpperCase()} ===\n`;
     for (const item of section.items) {
-      body += `- ${item.text} (nota di ${item.author}, ore ${item.time})\n`;
+      const flag = item.emailSent ? `   ⚠ Comunicazione interna già inviata — ${item.emailSentBy}, ${item.emailSentAt}` : "";
+      body += `- ${item.text} (nota di ${item.author}, ore ${item.time})${flag}\n`;
     }
     body += `\n`;
   }
