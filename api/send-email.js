@@ -26,10 +26,13 @@ export default async function handler(req, res) {
       auth: { user, pass },
     });
 
+    const firstWord = (text || "").trim().split(/\s+/)[0]?.replace(/[.,:;!?]+$/, "") || "";
+    const subjectSuffix = firstWord || reparto || "Laboratorio";
+
     await transporter.sendMail({
       from: `"Comunicazione Interna - Patologia Clinica" <${user}>`,
       to,
-      subject: `Comunicazione Customer Care - ${reparto || "Laboratorio"}`,
+      subject: `Comunicazione Customer Care - ${subjectSuffix}`,
       text: `Settore: ${reparto || "-"}\nCategoria: ${category || "-"}\n\n${text}\n\n— ${operator}, Laboratorio di Patologia Clinica`,
     });
 
