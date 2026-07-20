@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>🧪 Reagenti Lab</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--brd:#30363d;--green:#2ea043;--red:#da3633;--blue:#1f6feb;--text:#e6edf3;--mute:#8b949e}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,Arial,sans-serif;overflow:hidden}
+.screen{display:none;flex-direction:column;height:100vh;overflow-y:auto}
+.screen.active{display:flex}
+
+/* SETUP */
+#s-setup{padding:28px 20px 32px}
+.logo{font-size:36px;text-align:center}
+.logo-sub{font-size:16px;font-weight:700;text-align:center;margin-bottom:22px}
+.op-badge{background:var(--blue);color:#fff;border-radius:10px;padding:12px 16px;margin-bottom:22px;font-size:15px;font-weight:600;text-align:center}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mute);margin-bottom:10px}
+.btn-grid{display:grid;gap:10px;margin-bottom:22px}
+.btn-rep,.btn-az{padding:14px 16px;border-radius:10px;border:2px solid var(--brd);background:var(--card);color:var(--text);font-size:15px;font-weight:600;cursor:pointer;text-align:left}
+.btn-rep.sel{border-color:var(--blue);background:rgba(31,111,235,.15)}
+.btn-az.c{border-color:var(--green)}.btn-az.s{border-color:var(--red)}.btn-az.i{border-color:var(--blue)}
+.btn-az.sel.c{background:rgba(46,160,67,.15)}.btn-az.sel.s{background:rgba(218,54,51,.15)}.btn-az.sel.i{background:rgba(31,111,235,.15)}
+.btn-start{width:100%;padding:16px;background:var(--blue);color:#fff;border:none;border-radius:12px;font-size:17px;font-weight:700;cursor:pointer;opacity:.35;pointer-events:none}
+.btn-start.ok{opacity:1;pointer-events:auto}
+
+/* SCAN */
+#s-scan{overflow:hidden}
+.hdr{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--brd);flex-shrink:0;cursor:pointer}
+.hdr-info{flex:1}
+.hdr-name{font-size:13px;font-weight:700}
+.hdr-rep{font-size:11px;color:var(--mute);margin-top:2px}
+.pill{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pill.c{background:var(--green);color:#fff}.pill.s{background:var(--red);color:#fff}.pill.i{background:var(--blue);color:#fff}
+
+#reader-wrap{flex:1;position:relative;background:#000;overflow:hidden}
+#reader{width:100%;height:100%}
+#reader video{object-fit:cover!important}
+#reader img{display:none!important}
+
+/* Lista bar (top) */
+.scan-lista-bar{flex-shrink:0;padding:9px 14px;background:var(--card);border-bottom:1px solid var(--brd)}
+.btn-lista-top{width:100%;padding:11px 16px;background:rgba(31,111,235,.12);color:var(--blue);border:2px solid rgba(31,111,235,.4);border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;text-align:center;letter-spacing:.2px}
+.btn-lista-top:active{background:rgba(31,111,235,.25)}
+
+/* Footer scanner */
+.scan-footer{flex-shrink:0;background:var(--card);border-top:1px solid var(--brd);padding:10px 14px;display:flex;gap:8px;align-items:center}
+#manual-input{flex:1;padding:11px 12px;background:var(--bg);color:var(--text);border:2px solid var(--brd);border-radius:10px;font-size:15px;outline:none}
+#manual-input:focus{border-color:var(--blue)}
+#manual-input::placeholder{color:var(--mute)}
+.btn-manual-go{padding:11px 14px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}
+
+/* No-camera fallback */
+#no-cam{display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;padding:24px;background:#000}
+#no-cam.show{display:flex}
+.btn-no-cam{width:100%;max-width:320px;padding:22px 20px;background:var(--blue);color:#fff;border:none;border-radius:16px;font-size:18px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px}
+.btn-no-cam span{font-size:44px}
+.btn-no-cam small{font-size:13px;opacity:.8;font-weight:400}
+
+/* OVERLAY LISTA PRODOTTI */
+#ov-lista{display:none;position:fixed;inset:0;z-index:110;background:var(--bg);flex-direction:column}
+#ov-lista.show{display:flex}
+.lista-hdr{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border-bottom:1px solid var(--brd);flex-shrink:0}
+.lista-hdr-title{flex:1;font-size:15px;font-weight:700}
+.btn-lista-close{padding:8px 14px;background:transparent;color:var(--mute);border:1px solid var(--brd);border-radius:8px;font-size:13px;cursor:pointer}
+.lista-search{flex-shrink:0;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--brd)}
+.lista-search input{width:100%;padding:10px 12px;background:var(--bg);color:var(--text);border:2px solid var(--brd);border-radius:10px;font-size:15px;outline:none}
+.lista-search input:focus{border-color:var(--blue)}
+.lista-search input::placeholder{color:var(--mute)}
+.lista-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.prod-item{display:flex;flex-direction:column;padding:14px 16px;border-bottom:1px solid var(--brd);cursor:pointer;active:background:var(--card)}
+.prod-item:active{background:var(--card)}
+.prod-item-name{font-size:15px;font-weight:600;color:var(--text);line-height:1.3}
+.prod-item-code{font-size:11px;color:var(--mute);margin-top:3px;font-family:monospace}
+.lista-empty{padding:40px 20px;text-align:center;color:var(--mute);font-size:14px}
+
+/* OVERLAY QUANTITÀ */
+#ov-qty{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.85);align-items:flex-end;justify-content:center}
+#ov-qty.show{display:flex}
+.qty-card{background:var(--card);border-radius:22px 22px 0 0;padding:24px 24px 44px;width:100%;max-width:480px}
+.qty-prod-name{font-size:17px;font-weight:700;text-align:center;margin-bottom:2px;line-height:1.3}
+.qty-prod-code{font-size:11px;color:var(--mute);text-align:center;margin-bottom:16px;font-family:monospace}
+.qty-in{width:100%;font-size:54px;font-weight:700;text-align:center;background:var(--bg);border:2px solid var(--brd);border-radius:14px;color:var(--text);padding:14px;outline:none;-moz-appearance:textfield}
+.qty-in::-webkit-inner-spin-button{-webkit-appearance:none}
+.qty-in:focus{border-color:var(--blue)}
+.qty-btns{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:12px}
+.btn-rs{padding:14px;border-radius:12px;border:2px solid var(--brd);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer}
+.btn-ok{padding:14px;border-radius:12px;border:none;font-size:16px;font-weight:700;cursor:pointer;color:#fff}
+.btn-ok.c{background:var(--green)}.btn-ok.s{background:var(--red)}.btn-ok.i{background:var(--blue)}
+.btn-lista-alt{width:100%;margin-top:10px;padding:10px;background:transparent;color:var(--mute);border:none;font-size:12px;cursor:pointer;text-decoration:underline}
+
+/* FLASH */
+.flash{display:none;position:fixed;inset:0;z-index:200;flex-direction:column;align-items:center;justify-content:center}
+.flash.show{display:flex}
+#fl-ok{background:rgba(46,160,67,.95)}
+#fl-err{background:rgba(218,54,51,.95)}
+.fl-icon{font-size:72px;margin-bottom:14px}
+.fl-msg{font-size:22px;font-weight:700;color:#fff}
+.fl-sub{font-size:13px;color:rgba(255,255,255,.8);margin-top:8px;text-align:center;padding:0 24px}
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div class="screen active" id="s-setup">
+  <div class="logo">🧪</div>
+  <div class="logo-sub">Reagenti Lab</div>
+  <div class="op-badge" id="op-badge">—</div>
+  <div class="lbl" id="lbl-rep">Reparto</div>
+  <div class="btn-grid" id="rep-grid"></div>
+  <div class="lbl">Operazione</div>
+  <div class="btn-grid" style="grid-template-columns:1fr 1fr 1fr">
+    <button class="btn-az c" onclick="selAz('Carico')"     id="az-c">🟢<br>CARICO</button>
+    <button class="btn-az s" onclick="selAz('Scarico')"    id="az-s">🔴<br>SCARICO</button>
+    <button class="btn-az i" onclick="selAz('Inventario')" id="az-i">🔵<br>INV.</button>
+  </div>
+  <button class="btn-start" id="btn-start" onclick="goScan()">▶ Inizia</button>
+</div>
+
+<!-- SCAN -->
+<div class="screen" id="s-scan">
+  <div class="hdr" onclick="goSetup()">
+    <div class="hdr-info">
+      <div class="hdr-name" id="hdr-name"></div>
+      <div class="hdr-rep"  id="hdr-rep"></div>
+    </div>
+    <span class="pill" id="hdr-pill"></span>
+  </div>
+  <div class="scan-lista-bar">
+    <button class="btn-lista-top" onclick="openLista()">📋 Non riesci a scansionare? Seleziona dalla lista</button>
+  </div>
+  <div id="reader-wrap">
+    <div id="reader"></div>
+    <div id="no-cam">
+      <button class="btn-no-cam" onclick="openLista()">
+        <span>📋</span>
+        Seleziona dalla lista
+        <small>Fotocamera non disponibile</small>
+      </button>
+    </div>
+  </div>
+  <div class="scan-footer">
+    <input id="manual-input" type="text" placeholder="Digita codice…" inputmode="text">
+    <button class="btn-manual-go" onclick="manualSubmit()">→</button>
+  </div>
+</div>
+
+<!-- OVERLAY LISTA PRODOTTI -->
+<div id="ov-lista">
+  <div class="lista-hdr">
+    <div class="lista-hdr-title" id="lista-title">Seleziona prodotto</div>
+    <button class="btn-lista-close" onclick="closeLista()">✕ Chiudi</button>
+  </div>
+  <div class="lista-search">
+    <input type="text" id="lista-search" placeholder="Cerca prodotto…" inputmode="text" oninput="filterLista(this.value)">
+  </div>
+  <div class="lista-scroll" id="lista-scroll"></div>
+</div>
+
+<!-- OVERLAY QUANTITÀ -->
+<div id="ov-qty">
+  <div class="qty-card">
+    <div class="qty-prod-name" id="qty-prod-name"></div>
+    <div class="qty-prod-code" id="qty-prod-code"></div>
+    <input type="number" class="qty-in" id="qty-in" min="0" step="any" placeholder="0" inputmode="decimal">
+    <div class="qty-btns">
+      <button class="btn-rs" onclick="rescan()">↩ Riscan</button>
+      <button class="btn-ok" id="btn-ok" onclick="submitForm()">✓ Conferma</button>
+    </div>
+    <button class="btn-lista-alt" onclick="rescanToLista()">📋 Scegli un altro prodotto dalla lista</button>
+  </div>
+</div>
+
+<div class="flash" id="fl-ok">
+  <div class="fl-icon">✅</div><div class="fl-msg">Registrato!</div>
+  <div class="fl-sub" id="fl-sub"></div>
+</div>
+<div class="flash" id="fl-err">
+  <div class="fl-icon">❌</div><div class="fl-msg">Errore di rete</div>
+  <div class="fl-sub">Riprova</div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+/* ── CONFIG ──────────────────────────────── */
+var FORM='https://docs.google.com/forms/d/e/1FAIpQLSdSlzZ3MtT3iXxOdpA8bxz6sZF0T5urHX0MJUaQn_J6FNVQ3A/formResponse';
+var E={op:'entry.296009297',rep:'entry.399426300',az:'entry.131960064',cod:'entry.1336780077',qty:'entry.682688136'};
+
+var REPARTI={
+  'Andrea Fausciana':  ['Ematologia SY','Urine SY'],
+  'Gloria Rapazzini':  ['Ematologia SY','Urine SY','Stago'],
+  'Erica Tambaro':     ['Ematologia SY','Urine SY'],
+  'Alessia Pea':       ['Tosoh','Stago','Immulite'],
+  'Veronica Sudati':   ['Tosoh','Immulite'],
+  'Deborah Marchisio': ['Beckman'],
+  'OP. Emato':         ['Ematologia SY'],
+  'OP. Urine':         ['Urine SY'],
+  'OP. Ormonali':      ['Tosoh','Immulite'],
+  'OP. Chimica':       ['Stago','Beckman'],
+};
+
+var PRODOTTI={
+  'Ematologia SY':[
+    {n:'CELLPACK DCL (20 L)',          c:'CT661628'},
+    {n:'SULFOLYSER (5 L)',             c:'90411414'},
+    {n:'LYSERCELL WNR (5 L)',          c:'BL121531'},
+    {n:'FLUOROCELL WNR (2X8 2mL)',     c:'CP066715'},
+    {n:'LYSERCELL WDF (5 L)',          c:'AL337564'},
+    {n:'FLUOROCELL WDF (2x42 mL)',     c:'CV377552'},
+    {n:'CELLPACK DFL (2x1,5 L)',       c:'BT965910'},
+    {n:'FLUOROCELL RET (2X12mL)',      c:'BN337547'},
+    {n:'CELLCLEAN AUTO (20x4 mL)',     c:'BQ095093'},
+    {n:'FLUOROCELL PLT (2X12 mL)',     c:'CY787031'},
+    {n:'XN CHECKLEVEL 1 (8x3 mL)',     c:'213484'},
+    {n:'XN CHECKLEVEL 2 (8x3 mL)',     c:'213485'},
+    {n:'XN CHECKLEVEL 3 (8x3 mL)',     c:'213486'},
+  ],
+  'Urine SY':[
+    {n:'UF-CELLSHEATH (20L)',          c:'BY074501'},
+    {n:'UF-CELLPACK SF',               c:'CE604532'},
+    {n:'UF-CELLPACK CR',               c:'CB505392'},
+    {n:'UF-Fluorocell SF',             c:'AV083519'},
+    {n:'UF-Fluorocell CR',             c:'BW056982'},
+    {n:'Cellclean U',                  c:'CM942712'},
+    {n:'UF-Control',                   c:'BE740265'},
+    {n:'Meditape UC-9A (1000 pz)',     c:'AX119225'},
+    {n:'UC-Control (UC-35)',           c:'AU448468'},
+    {n:'SG-Calibrator',                c:'CK920648'},
+    {n:'Saline (6L)',                  c:'72000009'},
+  ],
+  'Tosoh':[
+    {n:'SOLUZIONE DI LAVAGGIO CF/4x100mL',   c:'TB020955'},
+    {n:'DILUENTE CF/4x100mL',               c:'TB020956'},
+    {n:'SET SUBSTRATO 500 TEST',            c:'TB020968'},
+    {n:'T4 STAT TESTPACK CF/100 TEST',      c:'TB025258'},
+    {n:'PUNTALI (CARBON TIP) CF/960 pz',    c:'TBR019215L'},
+    {n:'INSULINA STAT TESTPACK CF/100 TEST',c:'TB025260'},
+    {n:'PTH STAT TESTPACK 100 TEST',        c:'TB025213'},
+  ],
+  'Stago':[
+    {n:'STA LIATEST DDI PLUS (D-Dimero)',         c:'662'},
+    {n:'D-DI CONTROL',                            c:'868'},
+    {n:'STA PT NEOPTIMAL',                        c:'1164'},
+    {n:'STA CK PREST 5 APTT+ATTIVATORE',          c:'597'},
+    {n:'STA LIQUID FIBRINOGENO',                  c:'673'},
+    {n:'STA-STACHROM ATIII',                      c:'672'},
+    {n:'STA SYSTEM CONTROL N+P',                  c:'678'},
+    {n:'STA CACL2 0,025M',                        c:'367'},
+    {n:'STA DESORB U',                            c:'975'},
+    {n:'STA CLEANER SOLUTION',                    c:'973'},
+    {n:'STA OWREN KOLLER',                        c:'360'},
+    {n:'MICROCUPS STA',                           c:'802'},
+    {n:'STA MINI REDUCER',                        c:'797'},
+    {n:'STA MAXI REDUCER',                        c:'801'},
+    {n:'STA CUVETTE CF/6x1000 pz',                c:'28669'},
+    {n:'STA UNICALIBRATOR',                       c:'675'},
+    {n:'WHITE STIRRING BAR (2x7mm)',              c:'27425'},
+    {n:'ANCORETTA MAGNETICA ROSSA',               c:'26674'},
+    {n:'STA VWF FATTORE DI VON WILLEBRAND',       c:'ST00518'},
+    {n:'STA VWF CALIBRATORE',                     c:'ST00520'},
+    {n:'STA DEFICENT II (Fattore II)',             c:'745'},
+    {n:'STA DEFICENT IX (Fattore IX)',             c:'724'},
+    {n:'STA DEFICENT VIII (Fattore VIII)',         c:'725'},
+    {n:'STA DEFICENT X (Fattore X)',               c:'738'},
+    {n:'STA DEFICENT V (Fattore V)',               c:'744'},
+    {n:'STA IMMUNODEF XI (Fattore XI)',            c:'759'},
+    {n:'STA IMMUNODEF XII (Fattore XII)',          c:'315'},
+    {n:'STA DEFICENT VII (Fattore VII)',           c:'743'},
+  ],
+  'Immulite':[
+    {n:'CORTISOLO',           c:'L2KCO2'},
+    {n:'TLI CANINO',          c:'L2KLI2'},
+    {n:'FOLATI',              c:'L2KFO2'},
+    {n:'VITAMINA B12',        c:'L2KVB2'},
+    {n:'FT4',                 c:'L2KFT2'},
+    {n:'TESTOSTERONE',        c:'L2KTW2'},
+    {n:'PROGESTERONE',        c:'L2KPW2'},
+    {n:'ACTH',                c:'L2KAC2'},
+    {n:'IGF',                 c:'L2KIGF2'},
+    {n:'GASTRINA',            c:'L2KGA2'},
+    {n:'TSH',                 c:'L2KKT6'},
+    {n:'TPI',                 c:'L2KTI2'},
+    {n:'CONTROLLO TSH',       c:'K9TCM'},
+    {n:'CONTROLLO ACTH',      c:'LACCM'},
+    {n:'CONTROLLO IGF',       c:'LGCOCM'},
+    {n:'CONTROLLO CTL',       c:'LLICM'},
+    {n:'SUBSTRATO',           c:'L2SUBM'},
+    {n:'CUVETTE DI REAZIONE', c:'LRXT'},
+    {n:'LAVAGGIO',            c:'L2KPM'},
+    {n:'LAVAGGIO AGO',          c:'L2PWSM'},
+    {n:'T4',                    c:'L2KCT2'},
+    {n:'CONTROLLO GASTRINA',    c:'LGACM'},
+    {n:'CONTROLLO TROPONINA L1',c:'LTRP1CM'},
+    {n:'CONTROLLO TROPONINA L2',c:'LTRP2CM'},
+    {n:'CONTROLLI BIORAD',      c:'LBRDCM'},
+  ],
+  'Beckman':[],
+};
+
+/* ── STATE ───────────────────────────────── */
+var st={op:'',rep:'',az:'',code:'',prodName:'',scanner:null,stream:null,_bdTimer:null,paused:false};
+
+/* ── INIT ────────────────────────────────── */
+(function(){
+  var op=new URLSearchParams(location.search).get('op')||'';
+  if(op&&REPARTI[op]){st.op=op;setupScreen();}
+  else showOpList();
+})();
+
+function showOpList(){
+  var badge=document.getElementById('op-badge');
+  badge.textContent='Seleziona il tuo nome:';
+  badge.style.background='#30363d';
+  document.getElementById('lbl-rep').style.display='none';
+  document.getElementById('rep-grid').style.display='none';
+  document.querySelectorAll('#s-setup .btn-grid')[1].style.display='none';
+  document.getElementById('btn-start').style.display='none';
+  var g=document.createElement('div');g.className='btn-grid';g.style.marginBottom='22px';
+  Object.keys(REPARTI).forEach(function(n){
+    var b=document.createElement('button');b.className='btn-rep';b.textContent='👤 '+n;
+    b.onclick=function(){
+      st.op=n;g.remove();
+      badge.style.background='';
+      document.getElementById('lbl-rep').style.display='';
+      document.getElementById('rep-grid').style.display='';
+      document.querySelectorAll('#s-setup .btn-grid')[1].style.display='';
+      document.getElementById('btn-start').style.display='';
+      setupScreen();
+    };
+    g.appendChild(b);
+  });
+  document.getElementById('s-setup').insertBefore(g,document.getElementById('rep-grid'));
+}
+
+function setupScreen(){
+  document.getElementById('op-badge').textContent='👤 '+st.op;
+  var reps=REPARTI[st.op]||[],grid=document.getElementById('rep-grid');
+  grid.innerHTML='';
+  if(reps.length===1){
+    st.rep=reps[0];
+    var b=document.createElement('button');b.className='btn-rep sel';b.textContent=reps[0];grid.appendChild(b);
+  } else {
+    reps.forEach(function(r){
+      var b=document.createElement('button');b.className='btn-rep';b.textContent=r;
+      b.onclick=function(){
+        document.querySelectorAll('.btn-rep').forEach(function(x){x.classList.remove('sel');});
+        b.classList.add('sel');st.rep=r;checkReady();
+      };
+      grid.appendChild(b);
+    });
+  }
+  checkReady();
+}
+
+function selAz(az){
+  st.az=az;
+  ['c','s','i'].forEach(function(c){document.getElementById('az-'+c).classList.remove('sel');});
+  document.getElementById('az-'+az[0].toLowerCase()).classList.add('sel');
+  checkReady();
+}
+function checkReady(){
+  document.getElementById('btn-start').classList.toggle('ok',!!(st.rep&&st.az));
+}
+
+/* ── SCAN SCREEN ─────────────────────────── */
+function goScan(){
+  if(!st.rep||!st.az)return;
+  show('s-scan');
+  var cls=st.az[0].toLowerCase();
+  document.getElementById('hdr-name').textContent='👤 '+st.op;
+  document.getElementById('hdr-rep').textContent=st.rep;
+  var pill=document.getElementById('hdr-pill');
+  pill.textContent=st.az.toUpperCase();pill.className='pill '+cls;
+  document.getElementById('btn-ok').className='btn-ok '+cls;
+  document.getElementById('manual-input').value='';
+  document.getElementById('no-cam').classList.remove('show');
+  startScanner();
+}
+
+/* ── SCANNER ─────────────────────────────── */
+function startScanner(){
+  stopScanner();
+  st.paused=false;
+  if('BarcodeDetector' in window){
+    navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080},focusMode:{ideal:'continuous'}}
+    }).then(function(stream){
+      st.stream=stream;
+      var vid=document.createElement('video');
+      vid.srcObject=stream;vid.autoplay=true;vid.muted=true;vid.playsInline=true;
+      vid.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+      var wrap=document.getElementById('reader-wrap');
+      wrap.querySelector('#reader').innerHTML='';
+      wrap.querySelector('#reader').appendChild(vid);
+      var det;try{det=new BarcodeDetector();}catch(e){det=null;}
+      if(!det){startHtml5qrcode();return;}
+      st._bdTimer=setInterval(function(){
+        if(st.paused||vid.readyState<2)return;
+        det.detect(vid).then(function(b){
+          if(b.length&&!st.paused){st.paused=true;onCode(b[0].rawValue,'');}
+        }).catch(function(){});
+      },50);
+    }).catch(function(){startHtml5qrcode();});
+    return;
+  }
+  startHtml5qrcode();
+}
+
+function startHtml5qrcode(){
+  var reader=document.getElementById('reader');
+  reader.innerHTML='';
+  var side=Math.min(260,window.innerWidth-40);
+  st.scanner=new Html5Qrcode('reader');
+  st.scanner.start(
+    {facingMode:'environment'},
+    {fps:20,qrbox:{width:side,height:side}},
+    function(text){if(!st.paused){st.paused=true;onCode(text,'');}},
+    function(){}
+  ).catch(function(){
+    document.getElementById('reader').style.display='none';
+    document.getElementById('no-cam').classList.add('show');
+  });
+}
+
+function stopScanner(){
+  if(st._bdTimer){clearInterval(st._bdTimer);st._bdTimer=null;}
+  if(st.stream){st.stream.getTracks().forEach(function(t){t.stop();});st.stream=null;}
+  if(st.scanner){st.scanner.stop().catch(function(){});st.scanner=null;}
+}
+
+/* ── LISTA PRODOTTI ──────────────────────── */
+function openLista(){
+  var prods=getProdsForRep();
+  document.getElementById('lista-title').textContent='📋 '+st.rep;
+  document.getElementById('lista-search').value='';
+  renderLista(prods,'');
+  document.getElementById('ov-lista').classList.add('show');
+  setTimeout(function(){document.getElementById('lista-search').focus();},200);
+}
+
+function closeLista(){
+  document.getElementById('ov-lista').classList.remove('show');
+}
+
+function getProdsForRep(){
+  return PRODOTTI[st.rep]||[];
+}
+
+function filterLista(q){
+  renderLista(getProdsForRep(),q.toLowerCase());
+}
+
+function renderLista(prods,q){
+  var scroll=document.getElementById('lista-scroll');
+  scroll.innerHTML='';
+  var filtered=q?prods.filter(function(p){
+    return p.n.toLowerCase().indexOf(q)>=0||p.c.toLowerCase().indexOf(q)>=0;
+  }):prods;
+  if(!filtered.length){
+    scroll.innerHTML='<div class="lista-empty">Nessun prodotto trovato</div>';
+    return;
+  }
+  filtered.forEach(function(p){
+    var el=document.createElement('div');
+    el.className='prod-item';
+    el.innerHTML='<div class="prod-item-name">'+p.n+'</div><div class="prod-item-code">'+p.c+'</div>';
+    el.onclick=function(){closeLista();onCode(p.c,p.n);};
+    scroll.appendChild(el);
+  });
+}
+
+function rescanToLista(){
+  document.getElementById('ov-qty').classList.remove('show');
+  st.paused=false;
+  openLista();
+}
+
+/* ── CODE RILEVATO ───────────────────────── */
+function onCode(code,name){
+  // cerca il nome se non passato (es. da scan QR)
+  if(!name){
+    var prods=getProdsForRep();
+    for(var i=0;i<prods.length;i++){
+      if(prods[i].c===code){name=prods[i].n;break;}
+    }
+  }
+  st.code=code;
+  st.prodName=name||code;
+  document.getElementById('qty-prod-name').textContent=name||code;
+  document.getElementById('qty-prod-code').textContent=name?code:'';
+  document.getElementById('qty-in').value='';
+  document.getElementById('ov-qty').classList.add('show');
+  document.getElementById('manual-input').value='';
+  setTimeout(function(){document.getElementById('qty-in').focus();},200);
+}
+
+function manualSubmit(){
+  var v=document.getElementById('manual-input').value.trim();
+  if(v)onCode(v,'');
+}
+
+function rescan(){
+  document.getElementById('ov-qty').classList.remove('show');
+  st.paused=false;
+}
+
+function goSetup(){
+  stopScanner();
+  document.getElementById('ov-qty').classList.remove('show');
+  document.getElementById('ov-lista').classList.remove('show');
+  show('s-setup');
+}
+
+/* ── SUBMIT ──────────────────────────────── */
+async function submitForm(){
+  var qty=document.getElementById('qty-in').value.trim();
+  if(!qty||isNaN(parseFloat(qty))){alert('Inserisci una quantità');return;}
+  document.getElementById('ov-qty').classList.remove('show');
+  var fd=new FormData();
+  fd.append(E.op,st.op);fd.append(E.rep,st.rep);fd.append(E.az,st.az);
+  fd.append(E.cod,st.code);fd.append(E.qty,qty);
+  try{
+    await fetch(FORM,{method:'POST',mode:'no-cors',body:fd});
+    document.getElementById('fl-sub').textContent=st.az+' · '+qty+' unità · '+st.prodName;
+    flash('ok');
+  }catch(e){flash('err');}
+}
+
+function flash(t){
+  var el=document.getElementById('fl-'+t);
+  el.classList.add('show');
+  setTimeout(function(){el.classList.remove('show');st.paused=false;},1800);
+}
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});
+  document.getElementById(id).classList.add('active');
+}
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'){
+    if(document.getElementById('ov-qty').classList.contains('show'))submitForm();
+    else manualSubmit();
+  }
+});
+</script>
+</body>
+</html>

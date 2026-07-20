@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>QR Operatori — Reagenti Lab</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#fff;padding:24px;font-size:11px;color:#202124}
+h1{font-size:16px;text-align:center;margin-bottom:24px;color:#202124}
+.no-print{text-align:center;margin-bottom:20px}
+.no-print button{padding:9px 24px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:bold}
+.section-title{font-size:12px;font-weight:bold;color:#5f6368;text-transform:uppercase;letter-spacing:1px;margin:24px 0 12px;padding-bottom:6px;border-bottom:2px solid #e0e0e0}
+.grid{display:block;margin-bottom:8px}
+.op-row{display:flex;gap:12px;margin-bottom:12px;page-break-inside:avoid;break-inside:avoid}
+.card{
+  flex:1;border:2px solid #1a73e8;border-radius:14px;padding:16px 12px;text-align:center;
+  box-sizing:border-box;min-width:0
+}
+.card.generico{border-color:#e65100}
+.avatar{font-size:28px;margin-bottom:6px}
+.name{font-size:12px;font-weight:bold;color:#202124;margin-bottom:3px}
+.reps{font-size:9px;color:#5f6368;margin-bottom:12px;line-height:1.4}
+.qr-wrap{display:flex;justify-content:center;margin-bottom:8px;background:#fff;padding:4px;border-radius:6px}
+.qr-wrap img{display:block;width:130px;height:130px}
+.hint{font-size:9px;color:#aaa}
+@media print{
+  .no-print{display:none}
+  body{padding:10px}
+  .op-row{page-break-inside:avoid;break-inside:avoid}
+  .qr-wrap img{width:45mm;height:45mm}
+  .card{padding:10px 8px}
+}
+</style>
+</head>
+<body>
+<h1>🧪 QR Accesso Operatori — Reagenti Lab</h1>
+<div class="no-print"><button onclick="window.print()">🖨 Stampa</button></div>
+
+<div class="section-title">👤 Operatori nominali</div>
+<div class="grid" id="grid-nominali"></div>
+
+<div class="section-title">⚙️ Accessi generici</div>
+<div class="grid" id="grid-generici"></div>
+
+<script>
+var BASE = 'https://frabjous-pixie-e56eea.netlify.app/?op=';
+
+var NOMINALI = [
+  {nome:'Andrea Fausciana',  rep:'Ematologia SY · Urine SY'},
+  {nome:'Gloria Rapazzini',  rep:'Ematologia SY · Urine SY · Stago'},
+  {nome:'Erica Tambaro',     rep:'Ematologia SY · Urine SY'},
+  {nome:'Alessia Pea',       rep:'Tosoh · Stago · Immulite'},
+  {nome:'Veronica Sudati',   rep:'Tosoh · Immulite'},
+  {nome:'Deborah Marchisio', rep:'Beckman'},
+];
+
+var GENERICI = [
+  {nome:'OP. Emato',    rep:'Ematologia SY'},
+  {nome:'OP. Urine',    rep:'Urine SY'},
+  {nome:'OP. Ormonali', rep:'Tosoh · Immulite'},
+  {nome:'OP. Chimica',  rep:'Stago · Beckman'},
+  {nome:'__generico__', rep:'Seleziona tutto manualmente'},
+];
+
+function qrUrl(url){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=800x800&ecc=Q&margin=20&data='+encodeURIComponent(url);
+}
+
+function renderCards(list, gridId, extraClass){
+  var grid = document.getElementById(gridId);
+  var row = null;
+  list.forEach(function(op, i){
+    if(i % 3 === 0){
+      row = document.createElement('div');
+      row.className = 'op-row';
+      grid.appendChild(row);
+    }
+    var card = document.createElement('div');
+    card.className = 'card' + (extraClass ? ' '+extraClass : '');
+    if(op.nome === '__generico__') card.style.borderColor = '#5f6368';
+
+    var displayName = op.nome === '__generico__' ? '⚙️ Libero' : op.nome;
+    var url = op.nome === '__generico__'
+      ? 'https://frabjous-pixie-e56eea.netlify.app/'
+      : BASE + encodeURIComponent(op.nome);
+
+    card.innerHTML =
+      '<div class="avatar">👤</div>'+
+      '<div class="name">'+displayName+'</div>'+
+      '<div class="reps">'+op.rep+'</div>'+
+      '<div class="qr-wrap"><img src="'+qrUrl(url)+'" alt="QR '+displayName+'"></div>'+
+      '<div class="hint">Scansiona per accedere</div>';
+
+    row.appendChild(card);
+  });
+}
+
+renderCards(NOMINALI, 'grid-nominali', '');
+renderCards(GENERICI, 'grid-generici', 'generico');
+</script>
+</body>
+</html>

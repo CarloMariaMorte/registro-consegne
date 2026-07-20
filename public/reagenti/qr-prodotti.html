@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>QR Prodotti — Reagenti Lab</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#fff;padding:20px;font-size:11px;color:#202124}
+h1{font-size:16px;text-align:center;margin-bottom:20px}
+.no-print{text-align:center;margin-bottom:20px}
+.no-print button{padding:9px 24px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:bold}
+.rep-block{margin-bottom:32px}
+.rep-title{font-size:13px;font-weight:bold;color:#fff;background:#1a73e8;padding:7px 14px;border-radius:8px;margin-bottom:14px;display:inline-block}
+.prod-grid{display:block}
+.prod-row{display:flex;gap:12px;margin-bottom:12px;page-break-inside:avoid;break-inside:avoid}
+.prod-card{flex:1;border:1.5px solid #dadce0;border-radius:12px;padding:14px 10px;text-align:center;background:#fafafa;box-sizing:border-box;min-width:0}
+.prod-name{font-size:10px;font-weight:bold;line-height:1.3;min-height:28px;margin-bottom:4px}
+.prod-code{font-family:monospace;font-size:10px;color:#5f6368;margin-bottom:10px}
+.qr-wrap{display:flex;justify-content:center;margin-bottom:6px;background:#fff;padding:4px;border-radius:6px}
+.qr-wrap img{display:block;width:150px;height:150px}
+.qr-hint{font-size:9px;color:#aaa}
+@media print{
+  .no-print{display:none}
+  body{padding:10px}
+  .rep-block{page-break-after:always;break-after:page}
+  .rep-block.last{page-break-after:avoid;break-after:avoid}
+  .prod-row{page-break-inside:avoid;break-inside:avoid}
+  .qr-wrap img{width:50mm;height:50mm}
+  .prod-card{padding:8px 6px}
+}
+</style>
+</head>
+<body>
+<h1>🧪 QR Prodotti — Reagenti Lab</h1>
+<div class="no-print"><button onclick="window.print()">🖨 Stampa</button></div>
+<div id="root"></div>
+<script>
+var REPARTI = {
+  'Ematologia SY': [
+    {n:'CELLPACK DCL (20 L)',          c:'CT661628'},
+    {n:'SULFOLYSER (5 L)',             c:'90411414'},
+    {n:'LYSERCELL WNR (5 L)',          c:'BL121531'},
+    {n:'FLUOROCELL WNR (2X8 2mL)',     c:'CP066715'},
+    {n:'LYSERCELL WDF (5 L)',          c:'AL337564'},
+    {n:'FLUOROCELL WDF (2x42 mL)',     c:'CV377552'},
+    {n:'CELLPACK DFL (2x1,5 L)',       c:'BT965910'},
+    {n:'FLUOROCELL RET (2X12mL)',      c:'BN337547'},
+    {n:'CELLCLEAN AUTO (20x4 mL)',     c:'BQ095093'},
+    {n:'FLUOROCELL PLT (2X12 mL)',     c:'CY787031'},
+    {n:'XN CHECKLEVEL 1 (8x3 mL)',     c:'213484'},
+    {n:'XN CHECKLEVEL 2 (8x3 mL)',     c:'213485'},
+    {n:'XN CHECKLEVEL 3 (8x3 mL)',     c:'213486'},
+  ],
+  'Urine SY': [
+    {n:'UF-CELLSHEATH (20L)',          c:'BY074501'},
+    {n:'UF-CELLPACK SF',               c:'CE604532'},
+    {n:'UF-CELLPACK CR',               c:'CB505392'},
+    {n:'UF-Fluorocell SF',             c:'AV083519'},
+    {n:'UF-Fluorocell CR',             c:'BW056982'},
+    {n:'Cellclean U',                  c:'CM942712'},
+    {n:'UF-Control',                   c:'BE740265'},
+    {n:'Meditape UC-9A (1000 pz)',     c:'AX119225'},
+    {n:'UC-Control (UC-35)',           c:'AU448468'},
+    {n:'SG-Calibrator',               c:'CK920648'},
+    {n:'Saline (6L)',                  c:'72000009'},
+  ],
+  'Tosoh': [
+    {n:'SOLUZIONE DI LAVAGGIO CF/4x100mL',                    c:'TB020955'},
+    {n:'DILUENTE CF/4x100mL',                                 c:'TB020956'},
+    {n:'SET SUBSTRATO 500 TEST',                              c:'TB020968'},
+    {n:'T4 STAT TESTPACK CF/100 TEST',                        c:'TB025258'},
+    {n:'PUNTALI (CARBON TIP) CF/960 pz',                     c:'TBR019215L'},
+    {n:'INSULINA STAT TESTPACK CF/100 TEST',                  c:'TB025260'},
+    {n:'PTH STAT TESTPACK 100 TEST',                          c:'TB025213'},
+  ],
+  'Stago': [
+    {n:'STA LIATEST DDI PLUS (D-Dimero)',                     c:'662'},
+    {n:'D-DI CONTROL (Controllo D-Dimero)',                   c:'868'},
+    {n:'STA PT NEOPTIMAL',                                    c:'1164'},
+    {n:'STA CK PREST 5 APTT+ATTIVATORE',                     c:'597'},
+    {n:'STA LIQUID FIBRINOGENO',                              c:'673'},
+    {n:'STA-STACHROM ATIII',                                  c:'672'},
+    {n:'STA SYSTEM CONTROL N+P',                              c:'678'},
+    {n:'STA CACL2 0,025M',                                    c:'367'},
+    {n:'STA DESORB U',                                        c:'975'},
+    {n:'STA CLEANER SOLUTION',                                c:'973'},
+    {n:'STA OWREN KOLLER',                                    c:'360'},
+    {n:'MICROCUPS STA',                                       c:'802'},
+    {n:'STA MINI REDUCER',                                    c:'797'},
+    {n:'STA MAXI REDUCER',                                    c:'801'},
+    {n:'STA CUVETTE CF/6x1000 pz',                           c:'28669'},
+    {n:'STA UNICALIBRATOR',                                   c:'675'},
+    {n:'WHITE STIRRING BAR (2x7mm)',                          c:'27425'},
+    {n:'ANCORETTA MAGNETICA ROSSA',                           c:'26674'},
+    {n:'STA VWF FATTORE DI VON WILLEBRAND',                  c:'ST00518'},
+    {n:'STA VWF CALIBRATORE',                                 c:'ST00520'},
+    {n:'STA DEFICENT II (Fattore II)',                        c:'745'},
+    {n:'STA DEFICENT IX (Fattore IX)',                        c:'724'},
+    {n:'STA DEFICENT VIII (Fattore VIII)',                    c:'725'},
+    {n:'STA DEFICENT X (Fattore X)',                         c:'738'},
+    {n:'STA DEFICENT V (Fattore V)',                         c:'744'},
+    {n:'STA IMMUNODEF XI (Fattore XI)',                       c:'759'},
+    {n:'STA IMMUNODEF XII (Fattore XII)',                     c:'315'},
+    {n:'STA DEFICENT VII (Fattore VII)',                      c:'743'},
+  ],
+  'Immulite': [
+    {n:'CORTISOLO',             c:'L2KCO2'},
+    {n:'TLI CANINO',            c:'L2KLI2'},
+    {n:'FOLATI',                c:'L2KFO2'},
+    {n:'VITAMINA B12',          c:'L2KVB2'},
+    {n:'FT4',                   c:'L2KFT2'},
+    {n:'TESTOSTERONE',          c:'L2KTW2'},
+    {n:'PROGESTERONE',          c:'L2KPW2'},
+    {n:'ACTH',                  c:'L2KAC2'},
+    {n:'IGF',                   c:'L2KIGF2'},
+    {n:'GASTRINA',              c:'L2KGA2'},
+    {n:'TSH',                   c:'L2KKT6'},
+    {n:'TPI',                   c:'L2KTI2'},
+    {n:'CONTROLLO TSH',         c:'K9TCM'},
+    {n:'CONTROLLO ACTH',        c:'LACCM'},
+    {n:'CONTROLLO IGF',         c:'LGCOCM'},
+    {n:'CONTROLLO CTL',         c:'LLICM'},
+    {n:'SUBSTRATO',             c:'L2SUBM'},
+    {n:'CUVETTE DI REAZIONE',   c:'LRXT'},
+    {n:'LAVAGGIO',              c:'L2KPM'},
+    {n:'LAVAGGIO AGO',          c:'L2PWSM'},
+    {n:'T4',                    c:'L2KCT2'},
+    {n:'CONTROLLO GASTRINA',    c:'LGACM'},
+    {n:'CONTROLLO TROPONINA L1',c:'LTRP1CM'},
+    {n:'CONTROLLO TROPONINA L2',c:'LTRP2CM'},
+    {n:'CONTROLLI BIORAD',      c:'LBRDCM'},
+  ],
+  'Beckman': [],
+};
+
+var root = document.getElementById('root');
+var qid = 0;
+
+var lastBlock = null;
+Object.keys(REPARTI).forEach(function(rep){
+  var prods = REPARTI[rep];
+  if(!prods.length) return;
+  var block = document.createElement('div');
+  block.className = 'rep-block';
+  block.innerHTML = '<div class="rep-title">'+rep+'</div>';
+  var grid = document.createElement('div');
+  grid.className = 'prod-grid';
+  var row = null;
+  prods.forEach(function(p, i){
+    if(i % 3 === 0){
+      row = document.createElement('div');
+      row.className = 'prod-row';
+      grid.appendChild(row);
+    }
+    var card = document.createElement('div');
+    card.className = 'prod-card';
+    var qurl='https://api.qrserver.com/v1/create-qr-code/?size=800x800&ecc=Q&margin=20&data='+encodeURIComponent(p.c);
+    card.innerHTML =
+      '<div class="prod-name">'+p.n+'</div>'+
+      '<div class="prod-code">'+p.c+'</div>'+
+      '<div class="qr-wrap"><img src="'+qurl+'" alt="QR '+p.c+'"></div>'+
+      '<div class="qr-hint">scansiona con l\'app</div>';
+    row.appendChild(card);
+  });
+  block.appendChild(grid);
+  root.appendChild(block);
+  lastBlock = block;
+});
+if(lastBlock) lastBlock.classList.add('last');
+
+</script>
+</body>
+</html>
