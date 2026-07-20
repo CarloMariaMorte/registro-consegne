@@ -19,6 +19,8 @@ const CATEGORIES = [
   { id: "contestazioni", label: "Contestazioni", icon: "⚖️" },
 ];
 
+const REAGENTI_SHEET_URL = "https://docs.google.com/spreadsheets/d/1uLyjus1dG3Glm7SViG01xZujntx9FR5PsqKIcJy-2Og/edit?usp=sharing";
+
 const reparto = (id) => REPARTI.find((r) => r.id === id) || { label: id, icon: "" };
 const catInfo = (id) => CATEGORIES.find((c) => c.id === id) || { label: id, icon: "" };
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "");
@@ -605,7 +607,7 @@ export default function App() {
 
   const entryHandlers = {
     onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
-    onSendEmail: sendCommunication, sendingEmailId, isMaster,
+    onSendEmail: sendCommunication, sendingEmailId, isMaster, currentUser,
     editingId: editingEntryId, editText: editEntryText, setEditText: setEditEntryText,
     onStartEdit: startEditEntry, onSaveEdit: saveEditEntry, onCancelEdit: cancelEditEntry, onHide: toggleHideEntry,
     expandedThreads, onToggleThread: toggleThread,
@@ -638,6 +640,9 @@ export default function App() {
             </button>
             <button className={"seg-btn " + (activePanel === "menzioni" ? "active" : "")} onClick={() => setActivePanel("menzioni")}>
               Menzioni <span className="badge">{mentionsCount}</span>
+            </button>
+            <button className={"seg-btn " + (activePanel === "reagenti" ? "active" : "")} onClick={() => setActivePanel("reagenti")}>
+              🧪 Reagenti
             </button>
             <button className={"seg-btn " + (activePanel === "archivio" ? "active" : "")} onClick={() => setActivePanel("archivio")}>
               Archivio <span className="badge">{archivedEntries.length}</span>
@@ -697,7 +702,7 @@ export default function App() {
                 })}
               </div>
 
-              <div className="main-content">
+              <div className="main-content-center">
                 <div className="search-wrap">
                   <span className="search-icon">🔍</span>
                   <input className="search-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cerca nome, specie, problema, ID, settore..." />
@@ -734,26 +739,13 @@ export default function App() {
                           {reparto(selectedReparto).icon} Sei nella bacheca {reparto(selectedReparto).label}
                         </div>
 
-                        <div className="field-label">Filtra per categoria</div>
-                        <div className="pillrow">
-                          <button className={"pill " + (categoryFilter === "all" ? "active" : "")} onClick={() => setCategoryFilter("all")}>
-                            Tutte <span className="cnt">{scoped.filter((e) => !e.done).length}</span>
-                          </button>
-                          {CATEGORIES.map((c) => {
-                            const n = scoped.filter((e) => e.category === c.id && !e.done).length;
-                            return (
-                              <button key={c.id} className={"pill " + (categoryFilter === c.id ? "active" : "")} onClick={() => setCategoryFilter(c.id)}>
-                                {c.icon} {c.label} <span className="cnt">{n}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="field-label">✍️ Scrivi qui la nota per questo settore</div>
-                        {activeCategory === "sospesi" && (
-                          <div className="sospesi-hint">💡 Ricorda: inizia la nota con il cognome del proprietario del campione (serve per l'oggetto delle comunicazioni automatiche al Customer Care)</div>
-                        )}
-                        <div className="form">
+                        <div className="compose-card" style={{ borderTop: `3px solid ${reparto(selectedReparto).accent}` }}>
+                          <div className="compose-title">📝 Nuova nota — {reparto(selectedReparto).label}</div>
+                          <div className="compose-sub">Il filtro a destra serve solo per <em>vedere</em> le note. Qui sotto scegli invece la categoria in cui questa nuova nota verrà <em>salvata</em>.</div>
+                          {activeCategory === "sospesi" && (
+                            <div className="sospesi-hint">💡 Ricorda: inizia la nota con il cognome del proprietario del campione (serve per l'oggetto delle comunicazioni automatiche al Customer Care)</div>
+                          )}
+                          <div className="compose-field-label">👉 Scegli prima la categoria della nota che stai scrivendo</div>
                           <div className="chips">
                             {CATEGORIES.map((c) => (
                               <button key={c.id} className={"chip " + (activeCategory === c.id ? "on-" + c.id : "")} onClick={() => setActiveCategory(c.id)}>
@@ -767,8 +759,9 @@ export default function App() {
                           </div>
                           <div className="row">
                             <div className="mention-wrap" style={{ flex: 1 }}>
+                              <span className="note-input-icon">✍️</span>
                               <input
-                                className="txt-input"
+                                className="note-write-input"
                                 style={{ width: "100%" }}
                                 value={newEntryText}
                                 onChange={(e) => setNewEntryText(e.target.value)}
@@ -802,7 +795,7 @@ export default function App() {
                             {activeCategory === "programmati" && (
                               <input type="date" className="date-input" value={newEntryDate} onChange={(e) => setNewEntryDate(e.target.value)} />
                             )}
-                            <button className="btn" onClick={addEntry}>+ Aggiungi</button>
+                            <button className="btn btn-lg" onClick={addEntry}>+ Aggiungi</button>
                           </div>
                         </div>
 
@@ -845,6 +838,27 @@ export default function App() {
                         })()}
                       </>
                     )}
+                  </>
+                )}
+              </div>
+
+              <div className="sidebar" id="category-sidebar">
+                <div className="cal-title">🗂️ Filtra per categoria</div>
+                {!selectedReparto ? (
+                  <div className="cal-empty">Seleziona un settore per filtrare.</div>
+                ) : (
+                  <>
+                    <div className={"cat-side-item " + (categoryFilter === "all" ? "active" : "")} onClick={() => setCategoryFilter("all")}>
+                      Tutte <span className="cnt">{scoped.filter((e) => !e.done).length}</span>
+                    </div>
+                    {CATEGORIES.map((c) => {
+                      const n = scoped.filter((e) => e.category === c.id && !e.done).length;
+                      return (
+                        <div key={c.id} className={"cat-side-item " + (categoryFilter === c.id ? "active" : "")} onClick={() => setCategoryFilter(c.id)}>
+                          {c.icon} {c.label} <span className="cnt">{n}</span>
+                        </div>
+                      );
+                    })}
                   </>
                 )}
               </div>
@@ -1011,6 +1025,34 @@ export default function App() {
             </div>
           )}
 
+          {activePanel === "reagenti" && (
+            <div className="panel active">
+              <div className="panel-intro">Accesso rapido alla gestione dei reagenti: scansione carichi/scarichi, elenco QR da stampare, e il foglio di magazzino.</div>
+              <div className="reagenti-grid">
+                <a className="reagenti-card" href="/reagenti/app.html" target="_blank" rel="noopener noreferrer">
+                  <div className="reagenti-icon">📷</div>
+                  <div className="reagenti-title">Apri app di scansione</div>
+                  <div className="reagenti-sub">Carico, scarico e inventario dal telefono</div>
+                </a>
+                <a className="reagenti-card" href="/reagenti/qr-operatori.html" target="_blank" rel="noopener noreferrer">
+                  <div className="reagenti-icon">👤</div>
+                  <div className="reagenti-title">QR Operatori</div>
+                  <div className="reagenti-sub">Da stampare, uno per persona</div>
+                </a>
+                <a className="reagenti-card" href="/reagenti/qr-prodotti.html" target="_blank" rel="noopener noreferrer">
+                  <div className="reagenti-icon">📦</div>
+                  <div className="reagenti-title">QR Prodotti</div>
+                  <div className="reagenti-sub">Da stampare ed attaccare sui reagenti</div>
+                </a>
+                <a className="reagenti-card" href={REAGENTI_SHEET_URL} target="_blank" rel="noopener noreferrer">
+                  <div className="reagenti-icon">📊</div>
+                  <div className="reagenti-title">Foglio di magazzino</div>
+                  <div className="reagenti-sub">Scorte, movimenti, storico</div>
+                </a>
+              </div>
+            </div>
+          )}
+
           {activePanel === "archivio" && (
             <div className="panel active">
               <div className="panel-intro">Voci risolte, archiviate automaticamente dal giorno dopo la chiusura. Visibili qui fino a fine mese in corso.</div>
@@ -1155,7 +1197,7 @@ function Thread({ item, draft, setDraft, onSend, allProfiles }) {
 }
 
 function ItemRow({
-  item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster,
+  item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster, currentUser,
   editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide,
   expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget, allProfiles,
 }) {
@@ -1168,6 +1210,7 @@ function ItemRow({
   const shareTargets = REPARTI.filter((r) => r.id !== item.reparto);
   const threadOpen = !!expandedThreads[item.id];
   const replyCount = (item.replies || []).length;
+  const canEdit = isMaster || item.open_by === currentUser;
 
   return (
     <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "") + (dueToday ? " due-today" : "")}>
@@ -1181,7 +1224,7 @@ function ItemRow({
           )}
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             <button className={"tag-btn " + (item.cc ? "on" : "")} onClick={() => onTag(item)} title="Notifica Customer Care">🏷️</button>
-            {isMaster && !isEditing && <button className="master-btn" onClick={() => onStartEdit(item)} title="Modifica">✏️</button>}
+            {canEdit && !isEditing && <button className="master-btn" onClick={() => onStartEdit(item)} title="Modifica">✏️</button>}
             {isMaster && <button className="master-btn" onClick={() => onHide(item)} title={item.hidden ? "Mostra" : "Nascondi"}>{item.hidden ? "👁️" : "🙈"}</button>}
           </div>
         </div>
