@@ -236,3 +236,15 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .mention-item { padding:7px 12px; font-size:12.5px; cursor:pointer; }
 .mention-item:hover { background:#f1f5f9; }
 .sospesi-hint { font-size:11px; color:#5b21b6; background:#f5f3ff; border:1px solid #ddd6fe; padding:6px 10px; border-radius:6px; margin-bottom:10px; }
+
+/* duplicate-owner alert */
+.dup-overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:100; }
+.dup-modal { background:#fff; border-radius:12px; padding:24px; max-width:380px; width:90%; box-shadow:0 12px 32px rgba(0,0,0,.2); text-align:center; }
+.dup-modal-icon { font-size:34px; margin-bottom:8px; }
+.dup-modal-title { font-size:16px; font-weight:700; color:#b45309; margin-bottom:10px; }
+.dup-modal-text { font-size:12.5px; color:#334155; line-height:1.6; margin-bottom:18px; }
+.dup-modal-actions { display:flex; flex-direction:column; gap:8px; }
+.dup-btn-verify { padding:10px; border-radius:8px; border:none; background:#0f172a; color:#fff; font-size:13px; font-weight:700; cursor:pointer; }
+.dup-btn-verify:hover { background:#1e293b; }
+.dup-btn-continue { padding:10px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; color:#64748b; font-size:12.5px; font-weight:600; cursor:pointer; }
+.dup-btn-continue:hover { background:#f8fafc; }
