@@ -47,6 +47,13 @@ const fmtDate = (dateStr) => {
   return `${d}/${m}/${y}`;
 };
 const fmtDateShort = (iso) => new Date(iso).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+const fmtDateTime = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getFullYear()} · ${fmtTime(iso)}`;
+};
 
 function dayLabel(iso) {
   const d = new Date(iso);
@@ -157,6 +164,7 @@ export default function App() {
   const [newEntryText, setNewEntryText] = useState("");
   const [newEntryCC, setNewEntryCC] = useState(false);
   const [newEntryDate, setNewEntryDate] = useState("");
+  const [dupAlert, setDupAlert] = useState(null);
   const [briefInput, setBriefInput] = useState("");
   const [draftPoints, setDraftPoints] = useState([]);
   const [briefTagsInput, setBriefTagsInput] = useState("");
@@ -286,16 +294,43 @@ export default function App() {
     const text = newEntryText.trim();
     if (!text || !selectedReparto) return;
     if (activeCategory === "programmati" && !newEntryDate) { setErrorMsg("Seleziona una data per la voce programmata"); return; }
+
+    const firstWord = text.split(/\s+/)[0]?.replace(/[.,:;!?]+$/, "");
+    if (firstWord && firstWord.length >= 2) {
+      const dup = entries.find((e) => {
+        if (e.done || e.hidden) return false;
+        const w = (e.text || "").trim().split(/\s+/)[0]?.replace(/[.,:;!?]+$/, "");
+        return w && w.toLowerCase() === firstWord.toLowerCase();
+      });
+      if (dup) {
+        setDupAlert({
+          text,
+          reparto: selectedReparto,
+          category: activeCategory,
+          cc: newEntryCC,
+          scheduledDate: newEntryDate,
+          firstWord,
+          repartoLabel: reparto(dup.reparto).label,
+          categoryLabel: catInfo(dup.category).label,
+        });
+        return;
+      }
+    }
+
+    await saveNewEntry(text, selectedReparto, activeCategory, newEntryCC, newEntryDate);
+  };
+
+  const saveNewEntry = async (text, targetReparto, targetCategory, targetCC, targetDate) => {
     setNewEntryText("");
     setNewEntryCC(false);
     const mentions = extractMentions(text, allProfiles);
     const { error } = await supabase.from("entries").insert({
-      reparto: selectedReparto,
-      category: activeCategory,
+      reparto: targetReparto,
+      category: targetCategory,
       text,
       open_by: currentUser,
-      cc: newEntryCC,
-      scheduled_date: activeCategory === "programmati" ? newEntryDate : null,
+      cc: targetCC,
+      scheduled_date: targetCategory === "programmati" ? targetDate : null,
       shared_with: [],
       mentions,
     });
@@ -303,6 +338,18 @@ export default function App() {
     if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
     setErrorMsg(null);
     fetchEntries();
+  };
+
+  const confirmDuplicateAndSave = async () => {
+    const d = dupAlert;
+    setDupAlert(null);
+    await saveNewEntry(d.text, d.reparto, d.category, d.cc, d.scheduledDate);
+  };
+
+  const cancelDuplicateAndVerify = () => {
+    const fw = dupAlert.firstWord;
+    setDupAlert(null);
+    setSearchQuery(fw);
   };
 
   const toggleDone = async (item) => {
@@ -664,6 +711,24 @@ export default function App() {
       {reportMsg && (
         <div style={{ background: "#f0fdf4", color: "#166534", padding: "8px 16px", fontSize: 12, borderBottom: "1px solid #bbf7d0" }}>
           ✅ {reportMsg}
+        </div>
+      )}
+
+      {dupAlert && (
+        <div className="dup-overlay">
+          <div className="dup-modal">
+            <div className="dup-modal-icon">⚠️</div>
+            <div className="dup-modal-title">Possibile doppione</div>
+            <div className="dup-modal-text">
+              Esiste già una nota aperta che inizia con <b>"{dupAlert.firstWord}"</b><br />
+              in <b>{dupAlert.repartoLabel} · {dupAlert.categoryLabel}</b>.<br /><br />
+              Verifica che non sia lo stesso campione o proprietario prima di continuare.
+            </div>
+            <div className="dup-modal-actions">
+              <button className="dup-btn-verify" onClick={cancelDuplicateAndVerify}>🔍 Vai a verificare</button>
+              <button className="dup-btn-continue" onClick={confirmDuplicateAndSave}>Continua comunque</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1139,8 +1204,8 @@ export default function App() {
 function Trace({ item }) {
   return (
     <div className="trace">
-      <div className="trace-line">aperto da <b>{item.open_by}</b> · {fmtTime(item.open_at)}</div>
-      {item.done && <div className="trace-line resolved">→ risolto da <b>{item.resolved_by}</b> · {fmtTime(item.resolved_at)}</div>}
+      <div className="trace-line">aperto da <b>{item.open_by}</b> · {fmtDateTime(item.open_at)}</div>
+      {item.done && <div className="trace-line resolved">→ risolto da <b>{item.resolved_by}</b> · {fmtDateTime(item.resolved_at)}</div>}
     </div>
   );
 }
@@ -1149,7 +1214,7 @@ function EmailBox({ item, onSend, sendingId }) {
   const isSending = sendingId === item.id;
   return (
     <div className="email-box">
-      {item.email_sent && <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtTime(item.email_sent_at)}</div>}
+      {item.email_sent && <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtDateTime(item.email_sent_at)}</div>}
       <button className="email-btn" onClick={() => onSend(item)} disabled={isSending}>
         {isSending ? "Invio in corso..." : item.email_sent ? "Invia di nuovo" : "📧 Invia comunicazione"}
       </button>
@@ -1166,7 +1231,7 @@ function Thread({ item, draft, setDraft, onSend, allProfiles }) {
     <div className="cc-thread">
       {(item.replies || []).map((r, i) => (
         <div className="cc-reply" key={i}>
-          <div className="cc-reply-meta">{r.author} · {fmtTime(r.time)}</div>
+          <div className="cc-reply-meta">{r.author} · {fmtDateTime(r.time)}</div>
           <div className="cc-reply-text" dangerouslySetInnerHTML={{ __html: formatEntryTextHtml(r.text, allProfiles) }} />
         </div>
       ))}
