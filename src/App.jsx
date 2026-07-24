@@ -54,6 +54,13 @@ const fmtDateTime = (iso) => {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   return `${day}/${month}/${d.getFullYear()} · ${fmtTime(iso)}`;
 };
+const fmtDateOnly = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getFullYear()}`;
+};
 
 function dayLabel(iso) {
   const d = new Date(iso);
@@ -117,7 +124,7 @@ function generateReportPdf(report) {
       y += lines.length * 5;
       doc.setFontSize(8.5);
       doc.setTextColor(15, 118, 110);
-      const byline = `Nota di ${item.author} · ore ${item.time}`;
+      const byline = `Nota di ${item.author} · ${item.date} · ore ${item.time}`;
       doc.text(byline, 18, y);
       if (item.emailSent) {
         const bylineWidth = doc.getTextWidth(byline);
@@ -425,10 +432,11 @@ export default function App() {
       items: openSospesi.filter((e) => e.reparto === r.id).map((e) => ({
         text: e.text,
         author: e.open_by,
+        date: fmtDateOnly(e.open_at),
         time: fmtTime(e.open_at),
         emailSent: !!e.email_sent,
         emailSentBy: e.email_sent_by || null,
-        emailSentAt: e.email_sent_at ? fmtTime(e.email_sent_at) : null,
+        emailSentAt: e.email_sent_at ? fmtDateTime(e.email_sent_at) : null,
       })),
     })).filter((s) => s.items.length > 0);
 
