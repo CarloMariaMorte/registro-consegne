@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     body += `=== ${String(section.reparto).toUpperCase()} ===\n`;
     for (const item of section.items) {
       const flag = item.emailSent ? `   ⚠ Comunicazione interna già inviata — ${item.emailSentBy}, ${item.emailSentAt}` : "";
-      body += `- ${item.text} (nota di ${item.author}, ore ${item.time})${flag}\n`;
+      body += `- ${item.text} (nota di ${item.author}, ${item.date} ore ${item.time})${flag}\n`;
     }
     body += `\n`;
   }
