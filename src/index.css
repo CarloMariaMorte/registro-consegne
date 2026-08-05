@@ -267,7 +267,7 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .update-modal-group { text-align:left; border:1px solid #e2e8f0; border-radius:9px; padding:12px 14px; margin-bottom:10px; }
 .update-modal-reparto { font-size:12.5px; font-weight:700; color:#1e293b; margin-bottom:3px; }
 .update-modal-names { font-size:12px; color:#64748b; margin-bottom:8px; }
-.update-modal-link { font-size:12px; font-weight:600; color:#0f766e; text-decoration:none; }
+.update-modal-link { font-size:12px; font-weight:600; color:#0f766e; text-decoration:none; cursor:pointer; }
 .update-modal-link:hover { text-decoration:underline; }
 .update-modal-ok { width:100%; margin-top:8px; padding:11px; border-radius:8px; border:none; background:#0f172a; color:#fff; font-size:13.5px; font-weight:700; cursor:pointer; }
 .update-modal-ok:hover { background:#1e293b; }
