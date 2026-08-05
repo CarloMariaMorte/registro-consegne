@@ -830,18 +830,7 @@ export default function App() {
               <div className="update-modal-group" key={g.repartoId}>
                 <div className="update-modal-reparto">{g.icon} {g.repartoLabel} — {g.names.length} aggiornament{g.names.length === 1 ? "o" : "i"}</div>
                 <div className="update-modal-names">{g.names.join(", ")}</div>
-                
-                  className="update-modal-link"
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setSelectedReparto(g.repartoId);
-                    setActivePanel("registro");
-                    setUpdateAlert(null);
-                  }}
-                >
-                  Vai a {g.repartoLabel} →
-                </a>
+                <a className="update-modal-link" onClick={() => { setSelectedReparto(g.repartoId); setActivePanel("registro"); setUpdateAlert(null); }}>Vai a {g.repartoLabel} →</a>
               </div>
             ))}
             <button className="update-modal-ok" onClick={() => setUpdateAlert(null)}>OK, ho capito</button>
