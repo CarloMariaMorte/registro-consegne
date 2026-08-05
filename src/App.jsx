@@ -41,6 +41,12 @@ const isStale = (item) => {
   return !!item.open_at && !isSameDay(item.open_at);
 };
 const isDueToday = (item) => item.category === "programmati" && item.scheduled_date === todayStr() && !item.done;
+const hasUnseenUpdate = (item, currentUser) => {
+  const total = (item.replies || []).length;
+  if (!total) return false;
+  const mySeen = (item.seen || []).find((s) => s.name === currentUser);
+  return !mySeen || mySeen.count < total;
+};
 const fmtDate = (dateStr) => {
   if (!dateStr) return "";
   const [y, m, d] = dateStr.split("-");
@@ -124,7 +130,9 @@ function generateReportPdf(report) {
       y += lines.length * 5;
       doc.setFontSize(8.5);
       doc.setTextColor(15, 118, 110);
-      const byline = `Nota di ${item.author} · ${item.date} · ore ${item.time}`;
+      const byline = item.date
+        ? `Nota di ${item.author} · ${item.date} · ore ${item.time}`
+        : `Nota di ${item.author} · ore ${item.time}`;
       doc.text(byline, 18, y);
       if (item.emailSent) {
         const bylineWidth = doc.getTextWidth(byline);
@@ -195,8 +203,12 @@ export default function App() {
   const [pwError, setPwError] = useState(null);
   const [pwBusy, setPwBusy] = useState(false);
 
+  const [updateAlert, setUpdateAlert] = useState(null);
+
   const currentUser = profile?.display_name || profile?.email || null;
   const isMaster = !!profile?.is_master;
+  const currentUserRef = React.useRef(currentUser);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -214,6 +226,30 @@ export default function App() {
   }, [session]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  useEffect(() => {
+    if (!session) return;
+    const DATE_KEY = "registro_last_session_date";
+    const today = new Date().toDateString();
+    const stored = localStorage.getItem(DATE_KEY);
+    if (stored && stored !== today) {
+      localStorage.removeItem(DATE_KEY);
+      supabase.auth.signOut();
+      return;
+    }
+    localStorage.setItem(DATE_KEY, today);
+
+    const interval = setInterval(() => {
+      const current = new Date().toDateString();
+      const last = localStorage.getItem(DATE_KEY);
+      if (last && last !== current) {
+        localStorage.removeItem(DATE_KEY);
+        supabase.auth.signOut();
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [session]);
 
   const handleLogin = async () => {
     setAuthBusy(true); setAuthError(null);
@@ -289,7 +325,32 @@ export default function App() {
 
     const channel = supabase
       .channel("registro-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, fetchEntries)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "entries" }, fetchEntries)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "entries" }, fetchEntries)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "entries" }, (payload) => {
+        const oldReplies = payload.old?.replies || [];
+        const newReplies = payload.new?.replies || [];
+        if (newReplies.length > oldReplies.length) {
+          const lastReply = newReplies[newReplies.length - 1];
+          if (lastReply && lastReply.author !== currentUserRef.current) {
+            const r = reparto(payload.new.reparto);
+            const cognome = (payload.new.text || "").trim().split(/\s+/)[0]?.replace(/[.,:;!?]+$/, "") || "—";
+            setUpdateAlert((prev) => {
+              const groups = prev ? [...prev.groups] : [];
+              const idx = groups.findIndex((g) => g.repartoId === payload.new.reparto);
+              if (idx >= 0) {
+                if (!groups[idx].names.includes(cognome)) {
+                  groups[idx] = { ...groups[idx], names: [...groups[idx].names, cognome] };
+                }
+              } else {
+                groups.push({ repartoId: payload.new.reparto, repartoLabel: r.label, icon: r.icon, names: [cognome] });
+              }
+              return { groups };
+            });
+          }
+        }
+        fetchEntries();
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "briefings" }, fetchBriefings)
       .on("postgres_changes", { event: "*", schema: "public", table: "daily_reports" }, fetchDailyReports)
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
@@ -385,7 +446,24 @@ export default function App() {
   };
 
   const toggleSharePicker = (id) => setSharePickerOpen((p) => ({ ...p, [id]: !p[id] }));
-  const toggleThread = (id) => setExpandedThreads((p) => ({ ...p, [id]: !p[id] }));
+
+  const markEntrySeen = async (item) => {
+    const total = (item.replies || []).length;
+    if (!total) return;
+    const already = (item.seen || []).find((s) => s.name === currentUser);
+    if (already && already.count >= total) return;
+    const nextSeen = already
+      ? (item.seen || []).map((s) => (s.name === currentUser ? { ...s, count: total } : s))
+      : [...(item.seen || []), { name: currentUser, count: total }];
+    const { error } = await supabase.from("entries").update({ seen: nextSeen }).eq("id", item.id);
+    if (!error) fetchEntries();
+  };
+
+  const toggleThread = (item) => {
+    const opening = !expandedThreads[item.id];
+    setExpandedThreads((p) => ({ ...p, [item.id]: !p[item.id] }));
+    if (opening) markEntrySeen(item);
+  };
 
   const sendReply = async (item) => {
     const text = (replyDrafts[item.id] || "").trim();
@@ -507,7 +585,7 @@ export default function App() {
   const saveEditEntry = async (item) => {
     const text = editEntryText.trim();
     if (!text) return;
-    const { error } = await supabase.from("entries").update({ text }).eq("id", item.id);
+    const { error } = await supabase.from("entries").update({ text, edited_by: currentUser, edited_at: new Date().toISOString() }).eq("id", item.id);
     if (error) { setErrorMsg("Errore nel modificare la voce: " + error.message); return; }
     setErrorMsg(null);
     setEditingEntryId(null);
@@ -660,6 +738,8 @@ export default function App() {
     .filter((e) => e.category === "programmati" && !e.done && e.scheduled_date && e.scheduled_date !== todayStr())
     .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
+  const openUrgenze = visibleEntries.filter((e) => e.category === "urgenze" && !e.done);
+
   const entryHandlers = {
     onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
     onSendEmail: sendCommunication, sendingEmailId, isMaster, currentUser,
@@ -736,6 +816,35 @@ export default function App() {
               <button className="dup-btn-verify" onClick={cancelDuplicateAndVerify}>🔍 Vai a verificare</button>
               <button className="dup-btn-continue" onClick={confirmDuplicateAndSave}>Continua comunque</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {updateAlert && (
+        <div className="update-overlay">
+          <div className="update-modal">
+            <div className="update-modal-icon">🔔</div>
+            <div className="update-modal-title">Nuovi aggiornamenti</div>
+            <div className="update-modal-sub">Qualcuno ha risposto a delle note mentre eri altrove.</div>
+            {updateAlert.groups.map((g) => (
+              <div className="update-modal-group" key={g.repartoId}>
+                <div className="update-modal-reparto">{g.icon} {g.repartoLabel} — {g.names.length} aggiornament{g.names.length === 1 ? "o" : "i"}</div>
+                <div className="update-modal-names">{g.names.join(", ")}</div>
+                
+                  className="update-modal-link"
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setSelectedReparto(g.repartoId);
+                    setActivePanel("registro");
+                    setUpdateAlert(null);
+                  }}
+                >
+                  Vai a {g.repartoLabel} →
+                </a>
+              </div>
+            ))}
+            <button className="update-modal-ok" onClick={() => setUpdateAlert(null)}>OK, ho capito</button>
           </div>
         </div>
       )}
@@ -934,6 +1043,19 @@ export default function App() {
                     })}
                   </>
                 )}
+
+                <div className="cal-title" style={{ marginTop: 20 }}>🚨 Urgenze aperte — tutti i settori</div>
+                {openUrgenze.length === 0 ? (
+                  <div className="cal-empty">Nessuna urgenza aperta.</div>
+                ) : openUrgenze.map((e) => {
+                  const r = reparto(e.reparto);
+                  return (
+                    <div key={e.id} className="cal-item urgente-item">
+                      {e.text}
+                      <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1214,6 +1336,7 @@ function Trace({ item }) {
     <div className="trace">
       <div className="trace-line">aperto da <b>{item.open_by}</b> · {fmtDateTime(item.open_at)}</div>
       {item.done && <div className="trace-line resolved">→ risolto da <b>{item.resolved_by}</b> · {fmtDateTime(item.resolved_at)}</div>}
+      {item.edited_by && <div className="trace-line edited">✏️ modificata da <b>{item.edited_by}</b> · {fmtDateTime(item.edited_at)}</div>}
     </div>
   );
 }
@@ -1286,7 +1409,7 @@ function ItemRow({
   const canEdit = isMaster || item.open_by === currentUser;
 
   return (
-    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "") + (dueToday ? " due-today" : "")}>
+    <div className={"item " + (item.done ? "done " : "") + (item.cc ? "tagged" : "") + (item.category === "urgenze" ? " urgente" : "") + (item.hidden ? " hidden-item" : "") + (stale ? " stale" : "") + (dueToday ? " due-today" : "")}>
       <div className="chk" onClick={() => onToggle(item)} />
       <div className="item-b">
         <div className="item-top">
@@ -1301,6 +1424,8 @@ function ItemRow({
             {isMaster && <button className="master-btn" onClick={() => onHide(item)} title={item.hidden ? "Mostra" : "Nascondi"}>{item.hidden ? "👁️" : "🙈"}</button>}
           </div>
         </div>
+
+        {hasUnseenUpdate(item, currentUser) && <div className="update-label">🔔 NUOVO AGGIORNAMENTO</div>}
 
         {sharedHere && (
           <div className="share-badge" style={{ background: home.bg, color: home.text, border: `1px solid ${home.border}` }}>
@@ -1340,7 +1465,7 @@ function ItemRow({
         {item.cc && <EmailBox item={item} onSend={onSendEmail} sendingId={sendingEmailId} />}
 
         <div className="item-actions">
-          <span className="reply-toggle" onClick={() => onToggleThread(item.id)}>💬 {replyCount ? replyCount + " risposte" : "Rispondi"}</span>
+          <span className="reply-toggle" onClick={() => onToggleThread(item)}>💬 {replyCount ? replyCount + " risposte" : "Rispondi"}</span>
           {isHomeView && <span className="share-toggle" onClick={() => onToggleSharePicker(item.id)}>🔗 Condividi</span>}
         </div>
 
