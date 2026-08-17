@@ -35,6 +35,7 @@ const isArchived = (item) => item.done && item.resolved_at && !isSameDay(item.re
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const isStale = (item) => {
   if (item.done) return false;
+  if (item.category === "note") return false;
   if (item.category === "programmati") {
     return !!item.scheduled_date && item.scheduled_date < todayStr();
   }
@@ -328,11 +329,15 @@ export default function App() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "entries" }, fetchEntries)
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "entries" }, fetchEntries)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "entries" }, (payload) => {
+        console.log("[popup-debug] evento UPDATE ricevuto per entry", payload.new?.id);
         const oldReplies = payload.old?.replies || [];
         const newReplies = payload.new?.replies || [];
+        console.log("[popup-debug] risposte prima:", oldReplies.length, "risposte dopo:", newReplies.length, "payload.old:", payload.old);
         if (newReplies.length > oldReplies.length) {
           const lastReply = newReplies[newReplies.length - 1];
+          console.log("[popup-debug] ultima risposta di:", lastReply?.author, "| utente corrente:", currentUserRef.current);
           if (lastReply && lastReply.author !== currentUserRef.current) {
+            console.log("[popup-debug] condizioni ok, mostro il pop-up");
             const r = reparto(payload.new.reparto);
             const cognome = (payload.new.text || "").trim().split(/\s+/)[0]?.replace(/[.,:;!?]+$/, "") || "—";
             setUpdateAlert((prev) => {
@@ -347,7 +352,11 @@ export default function App() {
               }
               return { groups };
             });
+          } else {
+            console.log("[popup-debug] NON mostro il pop-up: autore uguale a chi guarda, o risposta mancante");
           }
+        } else {
+          console.log("[popup-debug] NON mostro il pop-up: nessuna nuova risposta rilevata (vedi risposte prima/dopo sopra)");
         }
         fetchEntries();
       })
@@ -739,6 +748,7 @@ export default function App() {
     .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
   const openUrgenze = visibleEntries.filter((e) => e.category === "urgenze" && !e.done);
+  const openNote = visibleEntries.filter((e) => e.category === "note" && !e.done);
 
   const entryHandlers = {
     onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
@@ -871,6 +881,19 @@ export default function App() {
                     </div>
                   );
                 })}
+
+                <div className="cal-title" style={{ marginTop: 20 }}>📝 Note — tutti i settori</div>
+                {openNote.length === 0 ? (
+                  <div className="cal-empty">Nessuna nota aperta.</div>
+                ) : openNote.map((e) => {
+                  const r = reparto(e.reparto);
+                  return (
+                    <div key={e.id} className="cal-item" style={{ borderLeft: `4px solid ${r.accent}` }}>
+                      {e.text}
+                      <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="main-content-center">
@@ -971,7 +994,7 @@ export default function App() {
                         </div>
 
                         {(() => {
-                          const cats = categoryFilter === "all" ? CATEGORIES : CATEGORIES.filter((c) => c.id === categoryFilter);
+                          const cats = categoryFilter === "all" ? CATEGORIES.filter((c) => c.id !== "note") : CATEGORIES.filter((c) => c.id === categoryFilter);
                           if (scoped.length === 0) return <div className="empty">Nessuna voce in questo settore.</div>;
                           return cats.map((cat) => {
                             const items = scoped.filter((e) => e.category === cat.id);
@@ -1022,7 +1045,7 @@ export default function App() {
                     <div className={"cat-side-item " + (categoryFilter === "all" ? "active" : "")} onClick={() => setCategoryFilter("all")}>
                       Tutte <span className="cnt">{scoped.filter((e) => !e.done).length}</span>
                     </div>
-                    {CATEGORIES.map((c) => {
+                    {CATEGORIES.filter((c) => c.id !== "note").map((c) => {
                       const n = scoped.filter((e) => e.category === c.id && !e.done).length;
                       return (
                         <div key={c.id} className={"cat-side-item " + (categoryFilter === c.id ? "active" : "")} onClick={() => setCategoryFilter(c.id)}>
