@@ -906,6 +906,9 @@ export default function App() {
                           {canEditNote && (
                             <button className="master-btn" onClick={() => startEditEntry(e)} title="Modifica" style={{ marginLeft: 6 }}>✏️</button>
                           )}
+                          {isMaster && (
+                            <button className="master-btn" onClick={() => toggleHideEntry(e)} title="Nascondi" style={{ marginLeft: 4 }}>🙈</button>
+                          )}
                         </>
                       )}
                     </div>
