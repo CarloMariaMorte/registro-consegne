@@ -887,10 +887,27 @@ export default function App() {
                   <div className="cal-empty">Nessuna nota aperta.</div>
                 ) : openNote.map((e) => {
                   const r = reparto(e.reparto);
+                  const canEditNote = isMaster || e.open_by === currentUser;
+                  const isEditingThis = editingEntryId === e.id;
                   return (
                     <div key={e.id} className="cal-item" style={{ borderLeft: `4px solid ${r.accent}` }}>
-                      {e.text}
-                      <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                      {isEditingThis ? (
+                        <>
+                          <textarea className="edit-textarea" style={{ width: "100%", boxSizing: "border-box" }} value={editEntryText} onChange={(ev) => setEditEntryText(ev.target.value)} />
+                          <div className="edit-actions">
+                            <button className="btn" onClick={() => saveEditEntry(e)}>Salva</button>
+                            <button className="cancel-btn" onClick={cancelEditEntry}>Annulla</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {e.text}
+                          <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                          {canEditNote && (
+                            <button className="master-btn" onClick={() => startEditEntry(e)} title="Modifica" style={{ marginLeft: 6 }}>✏️</button>
+                          )}
+                        </>
+                      )}
                     </div>
                   );
                 })}
