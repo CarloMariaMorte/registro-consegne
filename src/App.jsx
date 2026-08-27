@@ -16,7 +16,7 @@ const CATEGORIES = [
   { id: "urgenze", label: "Urgenze", icon: "⚡" },
   { id: "note", label: "Note", icon: "📝" },
   { id: "programmati", label: "Programmati", icon: "📅" },
-  { id: "contestazioni", label: "Contestazioni", icon: "⚖️" },
+  { id: "contestazioni", label: "Ripetizioni", icon: "⚖️" },
 ];
 
 const REAGENTI_SHEET_URL = "https://docs.google.com/spreadsheets/d/1uLyjus1dG3Glm7SViG01xZujntx9FR5PsqKIcJy-2Og/edit?usp=sharing";
@@ -890,7 +890,7 @@ export default function App() {
                   const canEditNote = isMaster || e.open_by === currentUser;
                   const isEditingThis = editingEntryId === e.id;
                   return (
-                    <div key={e.id} className="cal-item" style={{ borderLeft: `4px solid ${r.accent}` }}>
+                    <div key={e.id} className="cal-item note-item">
                       {isEditingThis ? (
                         <>
                           <textarea className="edit-textarea" style={{ width: "100%", boxSizing: "border-box" }} value={editEntryText} onChange={(ev) => setEditEntryText(ev.target.value)} />
@@ -900,16 +900,19 @@ export default function App() {
                           </div>
                         </>
                       ) : (
-                        <>
-                          {e.text}
-                          <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
-                          {canEditNote && (
-                            <button className="master-btn" onClick={() => startEditEntry(e)} title="Modifica" style={{ marginLeft: 6 }}>✏️</button>
-                          )}
-                          {isMaster && (
-                            <button className="master-btn" onClick={() => toggleHideEntry(e)} title="Nascondi" style={{ marginLeft: 4 }}>🙈</button>
-                          )}
-                        </>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                          <div className="chk" style={{ marginTop: 2, flexShrink: 0 }} onClick={() => toggleDone(e)} title="Segna come risolta" />
+                          <div style={{ flex: 1, minWidth: 0, borderLeft: `4px solid ${r.accent}`, paddingLeft: 8 }}>
+                            {e.text}
+                            <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                            {canEditNote && (
+                              <button className="master-btn" onClick={() => startEditEntry(e)} title="Modifica" style={{ marginLeft: 6 }}>✏️</button>
+                            )}
+                            {isMaster && (
+                              <button className="master-btn" onClick={() => toggleHideEntry(e)} title="Nascondi" style={{ marginLeft: 4 }}>🙈</button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
