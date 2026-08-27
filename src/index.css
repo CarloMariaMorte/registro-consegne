@@ -99,6 +99,9 @@ body { margin:0; font-family:'IBM Plex Sans', sans-serif; color:#1e293b; backgro
 .urgente-item { border:2px solid #fda4af; }
 .item.urgente { border:2px solid #fda4af; }
 
+/* note widget (sinistra) checkbox layout */
+.note-item .chk { border-radius:50%; width:15px; height:15px; border:2px solid #cbd5e1; cursor:pointer; }
+
 /* search */
 .search-wrap { position:relative; margin-bottom:10px; }
 .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:12px; opacity:.5; }
