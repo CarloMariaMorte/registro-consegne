@@ -911,6 +911,7 @@ export default function App() {
                             {isMaster && (
                               <button className="master-btn" onClick={() => toggleHideEntry(e)} title="Nascondi" style={{ marginLeft: 4 }}>🙈</button>
                             )}
+                            <Trace item={e} />
                           </div>
                         </div>
                       )}
