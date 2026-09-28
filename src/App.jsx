@@ -1085,10 +1085,34 @@ export default function App() {
                   <div className="cal-empty">Nessuna urgenza aperta.</div>
                 ) : openUrgenze.map((e) => {
                   const r = reparto(e.reparto);
+                  const canEditUrgenza = isMaster || e.open_by === currentUser;
+                  const isEditingThis = editingEntryId === e.id;
                   return (
                     <div key={e.id} className="cal-item urgente-item">
-                      {e.text}
-                      <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                      {isEditingThis ? (
+                        <>
+                          <textarea className="edit-textarea" style={{ width: "100%", boxSizing: "border-box" }} value={editEntryText} onChange={(ev) => setEditEntryText(ev.target.value)} />
+                          <div className="edit-actions">
+                            <button className="btn" onClick={() => saveEditEntry(e)}>Salva</button>
+                            <button className="cancel-btn" onClick={cancelEditEntry}>Annulla</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                          <div className="chk" style={{ marginTop: 2, flexShrink: 0 }} onClick={() => toggleDone(e)} title="Segna come risolta" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {e.text}
+                            <span className="cal-tag" style={{ background: r.bg, color: r.text }}>{r.icon} {r.label}</span>
+                            {canEditUrgenza && (
+                              <button className="master-btn" onClick={() => startEditEntry(e)} title="Modifica" style={{ marginLeft: 6 }}>✏️</button>
+                            )}
+                            {isMaster && (
+                              <button className="master-btn" onClick={() => toggleHideEntry(e)} title="Nascondi" style={{ marginLeft: 4 }}>🙈</button>
+                            )}
+                            <Trace item={e} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
