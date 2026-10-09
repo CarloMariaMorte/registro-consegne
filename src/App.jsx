@@ -187,6 +187,8 @@ export default function App() {
   const [briefTagFilter, setBriefTagFilter] = useState(null);
   const [expandedBriefId, setExpandedBriefId] = useState(null);
   const [replyDrafts, setReplyDrafts] = useState({});
+  const [newEntryMentionIds, setNewEntryMentionIds] = useState([]);
+  const [replyMentionIds, setReplyMentionIds] = useState({});
   const [errorMsg, setErrorMsg] = useState(null);
   const [reportMsg, setReportMsg] = useState(null);
   const [sendingEmailId, setSendingEmailId] = useState(null);
@@ -313,7 +315,7 @@ export default function App() {
   }, []);
 
   const fetchAllProfiles = useCallback(async () => {
-    const { data, error } = await supabase.from("profiles").select("id, display_name").not("display_name", "is", null);
+    const { data, error } = await supabase.from("profiles").select("id, display_name, email").not("display_name", "is", null);
     if (!error) setAllProfiles(data || []);
   }, []);
 
@@ -397,9 +399,46 @@ export default function App() {
     await saveNewEntry(text, selectedReparto, activeCategory, newEntryCC, newEntryDate);
   };
 
+  // Tiene solo gli ID scelti dal menu @ il cui nome compare ancora nel testo, escludendo chi scrive
+  const validMentionIds = (ids, text) =>
+    [...new Set(ids)].filter((id) => {
+      const p = allProfiles.find((x) => x.id === id);
+      return p && p.display_name && p.display_name !== currentUser && text.includes("@" + p.display_name);
+    });
+
+  const sendMentionEmails = async (ids, text, targetReparto, targetCategory, kind) => {
+    const failed = [];
+    for (const id of ids) {
+      const p = allProfiles.find((x) => x.id === id);
+      if (!p || !p.email) { failed.push(p?.display_name || "operatore"); continue; }
+      try {
+        const res = await fetch("/api/send-mention-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: p.email,
+            toName: p.display_name,
+            operator: currentUser,
+            text,
+            reparto: reparto(targetReparto).label,
+            category: catInfo(targetCategory).label,
+            kind,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Invio fallito");
+      } catch (e) {
+        failed.push(p.display_name);
+      }
+    }
+    if (failed.length) setErrorMsg("Salvato, ma email di menzione non inviata a: " + failed.join(", "));
+  };
+
   const saveNewEntry = async (text, targetReparto, targetCategory, targetCC, targetDate) => {
+    const mentionIds = validMentionIds(newEntryMentionIds, text);
     setNewEntryText("");
     setNewEntryCC(false);
+    setNewEntryMentionIds([]);
     const mentions = extractMentions(text, allProfiles);
     const { error } = await supabase.from("entries").insert({
       reparto: targetReparto,
@@ -410,11 +449,13 @@ export default function App() {
       scheduled_date: targetCategory === "programmati" ? targetDate : null,
       shared_with: [],
       mentions,
+      mention_ids: mentionIds,
     });
     setNewEntryDate("");
     if (error) { setErrorMsg("Errore nel salvare la voce: " + error.message); return; }
     setErrorMsg(null);
     fetchEntries();
+    if (mentionIds.length) sendMentionEmails(mentionIds, text, targetReparto, targetCategory, "nota");
   };
 
   const confirmDuplicateAndSave = async () => {
@@ -477,12 +518,15 @@ export default function App() {
   const sendReply = async (item) => {
     const text = (replyDrafts[item.id] || "").trim();
     if (!text) return;
+    const mentionIds = validMentionIds(replyMentionIds[item.id] || [], text);
     setReplyDrafts((p) => ({ ...p, [item.id]: "" }));
-    const nextReplies = [...(item.replies || []), { author: currentUser, text, time: new Date().toISOString() }];
+    setReplyMentionIds((p) => ({ ...p, [item.id]: [] }));
+    const nextReplies = [...(item.replies || []), { author: currentUser, text, time: new Date().toISOString(), mention_ids: mentionIds }];
     const { error } = await supabase.from("entries").update({ replies: nextReplies }).eq("id", item.id);
     if (error) { setErrorMsg("Errore nell'inviare la risposta: " + error.message); return; }
     setErrorMsg(null);
     fetchEntries();
+    if (mentionIds.length) sendMentionEmails(mentionIds, text, item.reparto, item.category, "risposta");
   };
 
   const sendCommunication = async (item) => {
@@ -500,15 +544,30 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Invio fallito");
-      const { error } = await supabase.from("entries").update({ email_sent: true, email_sent_by: currentUser, email_sent_at: new Date().toISOString() }).eq("id", item.id);
+      const { error } = await supabase.from("entries").update({ email_sent: true, email_sent_by: currentUser, email_sent_at: new Date().toISOString(), email_error: false }).eq("id", item.id);
       if (error) throw error;
       setErrorMsg(null);
       fetchEntries();
     } catch (e) {
       setErrorMsg("Errore nell'invio della comunicazione: " + e.message);
+      // Segna l'errore direttamente sulla nota, così resta visibile a tutti finché non viene risolto
+      await supabase.from("entries").update({ email_error: true }).eq("id", item.id);
+      fetchEntries();
     } finally {
       setSendingEmailId(null);
     }
+  };
+
+  const toggleEmailSentManual = async (item) => {
+    const next = !item.email_sent;
+    const { error } = await supabase.from("entries").update(
+      next
+        ? { email_sent: true, email_sent_by: currentUser, email_sent_at: new Date().toISOString(), email_error: false }
+        : { email_sent: false, email_sent_by: null, email_sent_at: null, email_error: false }
+    ).eq("id", item.id);
+    if (error) { setErrorMsg("Errore nel correggere lo stato dell'invio: " + error.message); return; }
+    setErrorMsg(null);
+    fetchEntries();
   };
 
   const sendDailyReport = async () => {
@@ -752,10 +811,11 @@ export default function App() {
 
   const entryHandlers = {
     onToggle: toggleDone, onTag: toggleTag, replyDrafts, setReplyDrafts, onReply: sendReply,
-    onSendEmail: sendCommunication, sendingEmailId, isMaster, currentUser,
+    onSendEmail: sendCommunication, sendingEmailId, onToggleEmailManual: toggleEmailSentManual, isMaster, currentUser,
     editingId: editingEntryId, editText: editEntryText, setEditText: setEditEntryText,
     onStartEdit: startEditEntry, onSaveEdit: saveEditEntry, onCancelEdit: cancelEditEntry, onHide: toggleHideEntry,
     expandedThreads, onToggleThread: toggleThread,
+    onPickReplyMention: (itemId, pid) => setReplyMentionIds((p) => ({ ...p, [itemId]: (p[itemId] || []).includes(pid) ? p[itemId] : [...(p[itemId] || []), pid] })),
     sharePickerOpen, onToggleSharePicker: toggleSharePicker, onShareTarget: toggleShareTarget,
     allProfiles,
   };
@@ -1001,6 +1061,7 @@ export default function App() {
                                         onMouseDown={(e) => {
                                           e.preventDefault();
                                           setNewEntryText(newEntryText.replace(/@([A-Za-zÀ-ÿ' .]*)$/, "@" + p.display_name + " "));
+                                          setNewEntryMentionIds((ids) => (ids.includes(p.id) ? ids : [...ids, p.id]));
                                         }}
                                       >
                                         {p.display_name}
@@ -1401,19 +1462,28 @@ function Trace({ item }) {
   );
 }
 
-function EmailBox({ item, onSend, sendingId }) {
+function EmailBox({ item, onSend, sendingId, isMaster, onToggleManual }) {
   const isSending = sendingId === item.id;
   return (
     <div className="email-box">
-      {item.email_sent && <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtDateTime(item.email_sent_at)}</div>}
-      <button className="email-btn" onClick={() => onSend(item)} disabled={isSending}>
-        {isSending ? "Invio in corso..." : item.email_sent ? "Invia di nuovo" : "📧 Invia comunicazione"}
+      {item.email_error ? (
+        <div className="email-error-note">⚠️ ATTENZIONE: verifica che la nota sia effettivamente arrivata al customer prima di inviarla di nuovo!</div>
+      ) : (
+        item.email_sent && <div className="email-sent-note">📧 Comunicazione inviata da <b>{item.email_sent_by}</b> · {fmtDateTime(item.email_sent_at)}</div>
+      )}
+      <button className={"email-btn" + (item.email_error ? " email-btn-error" : "")} onClick={() => onSend(item)} disabled={isSending}>
+        {isSending ? "Invio in corso..." : item.email_error ? "Invia di nuovo" : item.email_sent ? "Invia di nuovo" : "📧 Invia comunicazione"}
       </button>
+      {isMaster && (
+        <button className="master-btn email-fix-btn" onClick={() => onToggleManual(item)} title={item.email_sent ? "Correggi: segna come NON inviata" : "Correggi: segna come inviata"}>
+          🔧 {item.email_sent ? "segna non inviata" : "segna inviata"}
+        </button>
+      )}
     </div>
   );
 }
 
-function Thread({ item, draft, setDraft, onSend, allProfiles }) {
+function Thread({ item, draft, setDraft, onSend, allProfiles, onPickMention }) {
   const m = draft.match(/@([A-Za-zÀ-ÿ' .]*)$/);
   const partial = m ? m[1].toLowerCase() : null;
   const matches = partial !== null ? (allProfiles || []).filter((p) => p.display_name && p.display_name.toLowerCase().includes(partial)).slice(0, 6) : [];
@@ -1438,6 +1508,7 @@ function Thread({ item, draft, setDraft, onSend, allProfiles }) {
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setDraft(draft.replace(/@([A-Za-zÀ-ÿ' .]*)$/, "@" + p.display_name + " "));
+                    if (onPickMention) onPickMention(p.id);
                   }}
                 >
                   {p.display_name}
@@ -1453,9 +1524,9 @@ function Thread({ item, draft, setDraft, onSend, allProfiles }) {
 }
 
 function ItemRow({
-  item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, isMaster, currentUser,
+  item, onToggle, onTag, replyDrafts, setReplyDrafts, onReply, showTags, onSendEmail, sendingEmailId, onToggleEmailManual, isMaster, currentUser,
   editingId, editText, setEditText, onStartEdit, onSaveEdit, onCancelEdit, onHide,
-  expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget, allProfiles,
+  expandedThreads, onToggleThread, viewingReparto, sharePickerOpen, onToggleSharePicker, onShareTarget, allProfiles, onPickReplyMention,
 }) {
   const isEditing = editingId === item.id;
   const stale = isStale(item);
@@ -1522,7 +1593,7 @@ function ItemRow({
         {showTags && <div className="grp-h" style={{ marginTop: 5 }}>{home.icon} {home.label} · {catInfo(item.category).icon} {catInfo(item.category).label}</div>}
         <Trace item={item} />
 
-        {item.cc && <EmailBox item={item} onSend={onSendEmail} sendingId={sendingEmailId} />}
+        {item.cc && <EmailBox item={item} onSend={onSendEmail} sendingId={sendingEmailId} isMaster={isMaster} onToggleManual={onToggleEmailManual} />}
 
         <div className="item-actions">
           <span className="reply-toggle" onClick={() => onToggleThread(item)}>💬 {replyCount ? replyCount + " risposte" : "Rispondi"}</span>
@@ -1548,7 +1619,7 @@ function ItemRow({
         )}
 
         {threadOpen && (
-          <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} allProfiles={allProfiles} />
+          <Thread item={item} draft={replyDrafts[item.id] || ""} setDraft={(v) => setReplyDrafts((p) => ({ ...p, [item.id]: v }))} onSend={() => onReply(item)} allProfiles={allProfiles} onPickMention={(pid) => onPickReplyMention(item.id, pid)} />
         )}
       </div>
     </div>
