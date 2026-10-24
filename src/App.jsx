@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { jsPDF } from "jspdf";
 import { supabase } from "./supabaseClient";
+import Prontuario from "./Prontuario";
 
 const REPARTI = [
   { id: "ematologia", label: "Ematologia", icon: "🩸", bg: "#fee2e2", text: "#b91c1c", border: "#fca5a5", accent: "#ef4444" },
@@ -804,6 +805,9 @@ export default function App() {
             <button className={"seg-btn " + (activePanel === "reagenti" ? "active" : "")} onClick={() => setActivePanel("reagenti")}>
               🧪 Reagenti
             </button>
+            <button className={"seg-btn " + (activePanel === "prontuario" ? "active" : "")} onClick={() => setActivePanel("prontuario")}>
+              📚 Prontuario
+            </button>
             <button className={"seg-btn " + (activePanel === "archivio" ? "active" : "")} onClick={() => setActivePanel("archivio")}>
               Archivio <span className="badge">{archivedEntries.length}</span>
             </button>
@@ -1320,6 +1324,12 @@ export default function App() {
                   <div className="reagenti-sub">Scorte, movimenti, storico</div>
                 </a>
               </div>
+            </div>
+          )}
+
+          {activePanel === "prontuario" && (
+            <div className="panel active">
+              <Prontuario isMaster={isMaster} currentUser={currentUser} reparti={REPARTI} />
             </div>
           )}
 
