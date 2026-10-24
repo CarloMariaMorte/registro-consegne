@@ -8,6 +8,7 @@ const REPARTI = [
   { id: "foresi", label: "Elettroforesi", icon: "📈", bg: "#dcfce7", text: "#166534", border: "#86efac", accent: "#22c55e" },
   { id: "coag", label: "Coagulazione", icon: "⏱️", bg: "#fdf2f8", text: "#db2777", border: "#f9a8d4", accent: "#ec4899" },
   { id: "chimica_ormo", label: "Chimica & Ormo", icon: "⚗️", bg: "#ecfeff", text: "#0e7490", border: "#67e8f9", accent: "#06b6d4" },
+  { id: "citoflow", label: "Citoflow", icon: "🔬", bg: "#ede9fe", text: "#6d28d9", border: "#c4b5fd", accent: "#8b5cf6" },
 ];
 
 const CATEGORIES = [
