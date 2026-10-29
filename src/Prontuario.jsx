@@ -412,7 +412,7 @@ function CauseView({ item, tab, setTab, openKeys, setOpenKeys, term, isMaster, o
           <CauseCard key={i} c={c} open={openKeys.has(keyOf(i))} onToggle={() => toggleOne(i)} term={term} />
         ))}
         {tab === "diminuzione" && d.nonrilevabili && (
-          <div className="pr-extra"><b>Non rilevabili dal solo totale.</b> <Mark text={d.nonrilevabili} term={term} /></div>
+          <div className="pr-extra"><b>{d.nonrilevabili_titolo || "Non rilevabili dal solo totale."}</b> <Mark text={d.nonrilevabili} term={term} /></div>
         )}
       </div>
 
