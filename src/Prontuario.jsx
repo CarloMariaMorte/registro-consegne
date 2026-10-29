@@ -105,7 +105,23 @@ mark.pr-mark { background:#fde68a; color:inherit; border-radius:3px; padding:0 1
 .pr-hit .w { font-size:11.5px; font-weight:600; color:#0f766e; }
 .pr-hit .s { font-size:12.5px; color:#475569; line-height:1.5; }
 .pr-src { font-size:11.5px; color:#64748b; line-height:1.5; }
-@media (max-width:760px) { .pr-wrap { flex-direction:column; } .pr-side { width:100%; flex-direction:row; flex-wrap:wrap; } .pr-row { grid-template-columns:1fr; } .pr-cbody { padding-left:14px; } }
+/* datasheet */
+.pr-meta { display:flex; gap:6px 14px; flex-wrap:wrap; font-size:12.5px; color:#475569; }
+.pr-meta b { color:#1e293b; }
+.pr-spec { font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; background:#f1f5f9; color:#475569; }
+.pr-spec.vet { background:#ecfdf5; color:#047857; }
+.pr-lv { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; font-size:13.5px; line-height:1.6; color:#334155; }
+.pr-lv .b { flex-shrink:0; font-size:10.5px; font-weight:800; letter-spacing:.03em; padding:2px 8px; border-radius:6px; margin-top:2px; white-space:nowrap; }
+.pr-lv.stop { border-color:#fca5a5; background:#fef2f2; } .pr-lv.stop .b { background:#b91c1c; color:#fff; }
+.pr-lv.warn { border-color:#fcd34d; background:#fffbeb; } .pr-lv.warn .b { background:#b45309; color:#fff; }
+.pr-lv.info { border-color:#cbd5e1; background:#f8fafc; } .pr-lv.info .b { background:#475569; color:#fff; }
+.pr-lv.ok { border-color:#bbf7d0; background:#f0fdf4; } .pr-lv.ok .b { background:#15803d; color:#fff; }
+.pr-lv .t { font-weight:700; color:#0f172a; }
+.pr-kv { display:grid; grid-template-columns:130px 1fr; gap:4px 12px; font-size:13.5px; line-height:1.6; }
+.pr-kv dt { font-weight:700; color:#475569; } .pr-kv dd { margin:0; }
+.pr-lvtag { font-size:10.5px; font-weight:800; padding:1px 7px; border-radius:6px; color:#fff; margin-left:6px; }
+.pr-lvtag.stop { background:#b91c1c; } .pr-lvtag.warn { background:#b45309; } .pr-lvtag.info { background:#475569; } .pr-lvtag.ok { background:#15803d; }
+@media (max-width:760px) { .pr-kv { grid-template-columns:1fr; } .pr-wrap { flex-direction:column; } .pr-side { width:100%; flex-direction:row; flex-wrap:wrap; } .pr-row { grid-template-columns:1fr; } .pr-cbody { padding-left:14px; } }
 `;
 
 function fmtDate(d) {
@@ -125,21 +141,61 @@ function fold(s) {
     .replace(/[ùúûü]/g, "u");
 }
 
+// gruppi di sinonimi (radici): cercando una voce si trovano anche le altre
+const SYN = [
+  ["emoli", "emoglobin", "emolitic"],
+  ["lipemi", "trigliceridi", "torbid"],
+  ["itter", "bilirubin"],
+  ["biotin", "vitamina b7"],
+  ["eparin"],
+  ["edta"],
+];
+
+// una parola digitata -> lei più i suoi sinonimi
+function expandWord(w) {
+  const out = new Set([w]);
+  if (w.length >= 4) {
+    SYN.forEach((g) => {
+      if (g.some((x) => w.startsWith(x) || x.startsWith(w))) g.forEach((x) => out.add(x));
+    });
+  }
+  return Array.from(out);
+}
+
+// gruppi di parole: ogni parola digitata deve comparire (lei o un sinonimo)
+function wordGroups(term) {
+  return fold(term).split(/\s+/).filter(Boolean).map(expandWord);
+}
+
+// tutti i termini da evidenziare
+function expandTerms(term) {
+  return Array.from(new Set(wordGroups(term).flat()));
+}
+
+// vero se OGNI parola digitata compare nel testo (in qualunque ordine)
+function matchAny(text, groups, extra) {
+  if (!groups.length) return false;
+  const f = fold(text) + " " + fold(extra || "");
+  return groups.every((g) => g.some((t) => f.includes(t)));
+}
+
 function Mark({ text, term }) {
-  const t = fold(term).trim();
+  const terms = expandTerms(term);
   const s = String(text || "");
-  if (!t) return <>{s}</>;
+  if (terms.length === 0) return <>{s}</>;
   const f = fold(s);
+  const re = new RegExp(terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
   const out = [];
   let i = 0;
   let k = 0;
-  while (i < s.length) {
-    const j = f.indexOf(t, i);
-    if (j === -1) { out.push(s.slice(i)); break; }
-    if (j > i) out.push(s.slice(i, j));
-    out.push(<mark className="pr-mark" key={k++}>{s.slice(j, j + t.length)}</mark>);
-    i = j + t.length;
+  let m;
+  while ((m = re.exec(f)) !== null) {
+    if (m[0].length === 0) { re.lastIndex++; continue; }
+    if (m.index > i) out.push(s.slice(i, m.index));
+    out.push(<mark className="pr-mark" key={k++}>{s.slice(m.index, m.index + m[0].length)}</mark>);
+    i = m.index + m[0].length;
   }
+  if (i < s.length) out.push(s.slice(i));
   return <>{out}</>;
 }
 
@@ -156,24 +212,54 @@ function vClass(v) {
 function snippet(text, term) {
   const s = String(text || "");
   const f = fold(s);
-  const j = f.indexOf(fold(term).trim());
+  let j = -1;
+  expandTerms(term).forEach((t) => {
+    const p = f.indexOf(t);
+    if (p !== -1 && (j === -1 || p < j)) j = p;
+  });
   if (j === -1) return s.slice(0, 140);
   const a = Math.max(0, j - 50);
-  const b = Math.min(s.length, j + 90);
+  const b = Math.min(s.length, j + 110);
   return (a > 0 ? "…" : "") + s.slice(a, b) + (b < s.length ? "…" : "");
 }
 
-// cerca dentro la scheda strutturata di un parametro
+const LV = {
+  stop: { label: "INTERFERISCE", rank: 0 },
+  warn: { label: "ATTENZIONE", rank: 1 },
+  info: { label: "NOTA", rank: 2 },
+  ok: { label: "NESSUN EFFETTO", rank: 3 },
+};
+
+// cerca dentro la scheda strutturata (parametro o datasheet)
 function searchDetail(item, term) {
-  const t = fold(term).trim();
+  const groups = wordGroups(term);
   const d = item.detail;
-  if (!t || !d) return [];
+  if (groups.length === 0 || !d) return [];
   const hits = [];
-  const has = (x) => fold(x).includes(t);
+  const has = (x) => matchAny(x, groups, item.title);
   (d.info || []).forEach((x) => { if (has(x)) hits.push({ tab: null, where: "Info generiche", text: x }); });
+  if (d.uso && has(d.uso)) hits.push({ tab: null, where: "Uso previsto", text: d.uso });
+  if (d.strumento && has(d.strumento + " " + (d.specie || ""))) hits.push({ tab: null, where: "Strumento / specie", text: d.strumento + " · " + (d.specie || "") });
+  if (d.fonte && has(d.fonte)) hits.push({ tab: null, where: "Fonte", text: d.fonte });
+  if (d.codice && has(d.codice)) hits.push({ tab: null, where: "Codice", text: d.codice });
+  (d.interferenze || []).forEach((x) => {
+    if (has(x.t) || has(x.d)) {
+      hits.push({ tab: null, where: "Interferenze · " + x.t, text: x.d, level: x.livello || "info" });
+    }
+  });
+  if (d.campione) {
+    const c = d.campione;
+    [c.tipo, c.volume, c.conservazione, ...(c.note || [])].filter(Boolean).forEach((x) => {
+      if (has(x)) hits.push({ tab: null, where: "Campione e conservazione", text: x });
+    });
+  }
   (d.limiti || []).forEach((l) => {
     if (has(l.t) || has(l.d)) hits.push({ tab: null, where: "Limiti di misura · " + l.t, text: l.d });
   });
+  (d.prestazioni || []).forEach((l) => {
+    if (has(l.t) || has(l.d)) hits.push({ tab: null, where: "Prestazioni · " + l.t, text: l.d });
+  });
+  if (d.riferimento && has(d.riferimento)) hits.push({ tab: null, where: "Valori di riferimento", text: d.riferimento });
   ["aumento", "diminuzione"].forEach((tab) => {
     (d[tab] || []).forEach((c, idx) => {
       const corr = (c.correlati || []).map((r) => r.p + " " + r.v).join(" ");
@@ -357,6 +443,101 @@ function CauseView({ item, tab, setTab, openKeys, setOpenKeys, term, isMaster, o
   );
 }
 
+function DatasheetView({ item, term, isMaster, onEdit, onDelete, onBack, repTag, openFile, opening }) {
+  const d = item.detail || {};
+  const c = d.campione || {};
+  const interf = [...(d.interferenze || [])].sort(
+    (a, b) => (LV[a.livello]?.rank ?? 2) - (LV[b.livello]?.rank ?? 2)
+  );
+  return (
+    <>
+      <button className="pr-btn ghost pr-back" onClick={onBack}>← Tutti i datasheet</button>
+      <div className="pr-ptitle">
+        <h2>{item.title}</h2>
+        {repTag(item.reparto)}
+        {d.specie && <span className={"pr-spec " + (d.specie === "umano" ? "" : "vet")}>{d.specie === "umano" ? "Datasheet per uso umano" : "Uso veterinario · " + d.specie}</span>}
+        <span className="pr-actions" style={{ marginLeft: "auto" }}>
+          {item.file_path && (
+            <button className="pr-btn" disabled={opening} onClick={() => openFile(item)}>{opening ? "Apro…" : "Apri PDF originale"}</button>
+          )}
+          {isMaster && (
+            <>
+              <button className="pr-btn ghost" onClick={() => onEdit(item)}>Modifica</button>
+              <button className="pr-btn danger" onClick={() => onDelete(item)}>Elimina</button>
+            </>
+          )}
+        </span>
+      </div>
+      <div className="pr-meta">
+        {d.strumento && <span>Strumento: <b>{d.strumento}</b></span>}
+        {d.codice && <span>Codice: <b><Mark text={d.codice} term={term} /></b></span>}
+        {item.revision && <span>Rev.: <b>{item.revision}</b></span>}
+      </div>
+
+      {d.uso && (
+        <div className="pr-box"><h3>USO PREVISTO</h3><Mark text={d.uso} term={term} /></div>
+      )}
+
+      {interf.length > 0 && (
+        <div>
+          <div className="pr-grp">⚠ INTERFERENZE E LIMITI DI MISURA</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {interf.map((x, i) => {
+              const lv = LV[x.livello] ? x.livello : "info";
+              return (
+                <div key={i} className={"pr-lv " + lv}>
+                  <span className="b">{LV[lv].label}</span>
+                  <div><span className="t"><Mark text={x.t} term={term} />.</span> <Mark text={x.d} term={term} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {d.limiti && d.limiti.length > 0 && (
+        <div className="pr-box pr-warn">
+          <h3>ALTRI LIMITI DEL METODO</h3>
+          <ul>{d.limiti.map((l, i) => <li key={i}><b><Mark text={l.t} term={term} />:</b> <Mark text={l.d} term={term} /></li>)}</ul>
+        </div>
+      )}
+
+      {d.campione && (
+        <div className="pr-box">
+          <h3>CAMPIONE E CONSERVAZIONE</h3>
+          <dl className="pr-kv">
+            {c.tipo && (<><dt>Campione</dt><dd><Mark text={c.tipo} term={term} /></dd></>)}
+            {c.volume && (<><dt>Volume</dt><dd><Mark text={c.volume} term={term} /></dd></>)}
+            {c.conservazione && (<><dt>Conservazione</dt><dd><Mark text={c.conservazione} term={term} /></dd></>)}
+          </dl>
+          {c.note && c.note.length > 0 && (
+            <ul style={{ marginTop: 8 }}>{c.note.map((x, i) => <li key={i}><Mark text={x} term={term} /></li>)}</ul>
+          )}
+        </div>
+      )}
+
+      {d.prestazioni && d.prestazioni.length > 0 && (
+        <div className="pr-box">
+          <h3>PRESTAZIONI</h3>
+          <dl className="pr-kv">
+            {d.prestazioni.map((p, i) => (<React.Fragment key={i}><dt>{p.t}</dt><dd><Mark text={p.d} term={term} /></dd></React.Fragment>))}
+          </dl>
+        </div>
+      )}
+
+      {d.riferimento && (
+        <div className="pr-box"><h3>VALORI DI RIFERIMENTO</h3><Mark text={d.riferimento} term={term} /></div>
+      )}
+
+      {item.body && <div className="pr-box"><div style={{ whiteSpace: "pre-wrap" }}>{item.body}</div></div>}
+      <div className="pr-src">
+        {d.fonte && <>Fonte: {d.fonte} </>}
+        I valori numerici e le tabelle complete (es. bilirubina, trigliceridi, emoglobina) sono nel PDF originale del produttore.
+      </div>
+    </>
+  );
+}
+
 export default function Prontuario({ isMaster, currentUser, reparti }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -375,6 +556,7 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
   const [openKeys, setOpenKeys] = useState(new Set());
   const [hl, setHl] = useState("");
   const [repFilter, setRepFilter] = useState("tutti");
+  const [specFilter, setSpecFilter] = useState("tutti");
 
   const repartoMap = useMemo(() => {
     const m = {};
@@ -409,23 +591,25 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
   // risultati ricerca
   const results = useMemo(() => {
     if (!term) return { docs: [], hits: [] };
-    const t = fold(term);
+    const groups = wordGroups(term);
     const docs = [];
     const hits = [];
     items.forEach((i) => {
-      const kind = secOf(i.section)?.kind;
-      if (kind === "cause" && i.detail) {
-        const titleHit = fold(i.title).includes(t);
+      if (i.detail) {
         const h = searchDetail(i, term);
-        if (titleHit && h.length === 0) hits.push({ item: i, tab: "aumento", idx: null, where: "Scheda parametro", text: i.title });
+        if (h.length === 0 && matchAny(i.title + " " + JSON.stringify(i.detail) + " " + (i.body || ""), groups)) {
+          hits.push({ item: i, tab: "aumento", idx: null, where: "Scheda", text: i.title });
+        }
         h.forEach((x) => hits.push({ item: i, ...x }));
       } else {
         const match = [i.title, i.body, i.aumento, i.diminuzione, i.reparto, i.revision]
           .filter(Boolean)
-          .some((x) => fold(x).includes(t));
+          .some((x) => matchAny(x, groups));
         if (match) docs.push(i);
       }
     });
+    // prima le interferenze che alterano il risultato, poi le altre, per ultime "nessun effetto"
+    hits.sort((a, b) => (LV[a.level]?.rank ?? 2) - (LV[b.level]?.rank ?? 2));
     return { docs, hits };
   }, [items, term]);
 
@@ -436,7 +620,7 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
   const goTo = (hit) => {
     setHl(term);
     setSelId(hit.item.id);
-    setSection("cause");
+    setSection(hit.item.section);
     const tb = hit.tab || "aumento";
     setTab(tb);
     const n = new Set();
@@ -484,7 +668,8 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
       setFormError(`Il file supera ${MAX_MB} MB.`); return;
     }
     let detail = null;
-    if (sec.kind === "cause" && form.detailText.trim()) {
+    const hasDetail = sec.kind === "cause" || sec.id === "datasheet";
+    if (hasDetail && form.detailText.trim()) {
       try { detail = JSON.parse(form.detailText); }
       catch (e) { setFormError("Il testo della scheda strutturata non è un JSON valido: " + e.message); return; }
     }
@@ -521,7 +706,7 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
         updated_by: currentUser,
         updated_at: new Date().toISOString(),
       };
-      if (sec.kind === "cause") payload.detail = detail;
+      if (hasDetail) payload.detail = detail;
 
       let dbErr;
       if (form.id) {
@@ -629,6 +814,11 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
 
   const showCauseView = section === "cause" && !searching && selItem;
   const showParamGrid = section === "cause" && !searching && !selItem;
+  const showDsView = section === "datasheet" && !searching && selItem && selItem.detail;
+  const showDsGrid = section === "datasheet" && !searching && !showDsView;
+  const dsCards = sectionItems.filter((i) => i.detail && (specFilter === "tutti" || i.detail.specie === specFilter));
+  const dsPlain = sectionItems.filter((i) => !i.detail);
+  const dsSpecies = Array.from(new Set(sectionItems.map((i) => i.detail && i.detail.specie).filter(Boolean)));
 
   return (
     <div>
@@ -653,9 +843,9 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
             <div className="pr-title">
               {searching
                 ? `Risultati per "${term}" (${results.docs.length + results.hits.length})`
-                : showCauseView ? "" : `${currentSec.icon} ${currentSec.label}`}
+                : (showCauseView || showDsView) ? "" : `${currentSec.icon} ${currentSec.label}`}
             </div>
-            {isMaster && !searching && !form && !showCauseView && (
+            {isMaster && !searching && !form && !showCauseView && !showDsView && (
               <button className="pr-btn" onClick={openNew}>+ Aggiungi</button>
             )}
           </div>
@@ -725,6 +915,12 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
                     Note / testo (facoltativo, ricercabile)
                     <textarea value={form.body} onChange={(e) => setF("body", e.target.value)} />
                   </label>
+                  {formSec.id === "datasheet" && (
+                    <label>
+                      Scheda strutturata (JSON, avanzato: di norma la carico io)
+                      <textarea className="pr-json" value={form.detailText} onChange={(e) => setF("detailText", e.target.value)} />
+                    </label>
+                  )}
                   <label>
                     File PDF (max {MAX_MB} MB)
                     <input
@@ -767,11 +963,11 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
               <>
                 {results.hits.length > 0 && (
                   <>
-                    <div className="pr-grp">📈 CAUSE DI AUMENTO / DIMINUZIONE E LIMITI DI MISURA</div>
+                    <div className="pr-grp">📈🧪 SCHEDE: CAUSE, INTERFERENZE E LIMITI DI MISURA</div>
                     {results.hits.map((h, i) => (
                       <button key={i} className="pr-hit" onClick={() => goTo(h)}>
-                        <span className="p">{h.item.title} {repTag(h.item.reparto)}</span>
-                        <span className="w">{h.where}</span>
+                        <span className="p">{secOf(h.item.section)?.icon} {h.item.title} {repTag(h.item.reparto)}</span>
+                        <span className="w">{h.where}{h.level && <span className={"pr-lvtag " + h.level}>{LV[h.level].label}</span>}</span>
                         <span className="s"><Mark text={snippet(h.text, term)} term={term} /></span>
                       </button>
                     ))}
@@ -811,6 +1007,49 @@ export default function Prontuario({ isMaster, currentUser, reparti }) {
               onBack={backToList}
               repTag={repTag}
             />
+          ) : showDsView ? (
+            <DatasheetView
+              item={selItem}
+              term={hl}
+              isMaster={isMaster}
+              onEdit={openEdit}
+              onDelete={remove}
+              onBack={backToList}
+              repTag={repTag}
+              openFile={openFile}
+              opening={openingId === selItem.id}
+            />
+          ) : showDsGrid && dsCards.length + dsPlain.length > 0 && dsCards.length > 0 ? (
+            <>
+              {dsSpecies.length > 1 && (
+                <div className="pr-chips">
+                  {["tutti", ...dsSpecies].map((sp) => (
+                    <button key={sp} className={"pr-chip " + (specFilter === sp ? "on" : "")} onClick={() => setSpecFilter(sp)}>
+                      {sp === "tutti" ? "Tutti" : sp === "umano" ? "Uso umano" : "🐕 " + sp.charAt(0).toUpperCase() + sp.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="pr-grid">
+                {dsCards.map((it) => (
+                  <button key={it.id} className="pr-pbtn" onClick={() => openParam(it)}>
+                    <span>{it.title}</span>
+                    <small>{it.detail.specie === "umano" ? "umano" : "🐕 " + it.detail.specie}</small>
+                  </button>
+                ))}
+              </div>
+              {dsPlain.length > 0 && (
+                <>
+                  <div className="pr-grp">ALTRI DOCUMENTI</div>
+                  <div className="pr-tablebox">
+                    <table className="pr-table">
+                      <thead><tr><th>Documento</th><th style={{ width: "18%" }}>Settore</th><th style={{ width: "20%" }}>Revisione</th><th style={{ width: isMaster ? "28%" : "14%" }}></th></tr></thead>
+                      <tbody>{renderDocRows(dsPlain)}</tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
           ) : showParamGrid ? (
             sectionItems.length === 0 ? (
               <div className="pr-empty">Nessun parametro ancora. I contenuti verranno aggiunti a breve.</div>
